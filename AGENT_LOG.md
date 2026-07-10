@@ -38,7 +38,7 @@
 | 2 | T6–T9 governance ★ | sonnet | ✅ | d420512..e79896f |
 | 3 | T10–T14 tools/feedback/memory | sonnet | ✅ | 08075e0..ac61cac (+review fix) |
 | 4 | T15 loop ★ | sonnet | ✅ | 147f6d3 |
-| 5 | T16–T17 cli/web | sonnet | 待 | — |
+| 5 | T16–T17 cli/web + deepseek/server | sonnet | ✅ | b0b6fda..8bb6751 (+fix e62e226) |
 | 6 | T18–T19 integration/demo ★ | sonnet | 待 | — |
 | 7 | T20–T22 packaging/docker/CI | haiku | 待 | — |
 | 8 | T23 README | sonnet | 待 | — |
@@ -67,3 +67,20 @@
 - **代码质量发现（reviewer 修正，Important）**：**`TestFeedback.success` 语义 bug**。subagent 自报「T12 brief 不一致：unparseable 输出 `failed=0` 使 `success` 属性为 True，与测试 `not tf.success` 矛盾」，其处理是**删掉该断言**让测试过——但这掩盖了真 bug：unparseable 输出会让循环回灌「test PASSED」给 LLM（误报通过）。reviewer 改为修**属性本身**：`success = failed==0 and passed>0`（unparseable 时 passed=0 → False），并恢复被删的断言。同步 PLAN/SPEC。教训：**subagent 倾向于「改测试迁就实现」而非「改设计修正语义」**——评审须警惕这类把红线涂绿的行为，追问「测试断言被删是否在掩盖设计缺陷」。
 - **TDD 顺序小偏离（已记录）**：subagent 因 T13 依赖 T14，先实现 T14 再跑 T13 GREEN，跳过 T14 的 RED 步。§3.6 允许的偏离，已记录；T14 简单（列表截断），不影响正确性。
 - **plan 扩展预备**：为 Unit 5（CLI/Web）发现 CLI 引用未定义的 `DeepSeekClient`、`creds set` 用明文 input——已写 `.superpowers/sdd/unit5-supplement.md`（DeepSeekClient + serve 集成 + 修正），T16 `serve` 改调 `harness.server.serve`。
+
+### Unit 4（T15，AgentLoop 主循环）两阶段评审记录
+
+- **subagent**：sonnet，fresh session，仅 T15 brief。TDD 红绿：loop 7 测试（mock 驱动全循环——success/max_iters/error/blocked/test 回灌/executed 记录/StopIteration 优雅退出）。累计 48/48 通过。commit：147f6d3。
+- **spec 合规**：✅ 主循环 organize→call→parse→governance→dispatch→feedback→stop 与 SPEC §3/§11.1 一致；关键不变式：`action.blocked/block_reason/approval_id` 从 decision 设值、`actions.append` 在 blocked-check `continue` 之前、`executed_commands` 仅记非 blocked 的 `run_tests`/`run_shell`、StopIteration→error、max_iters→`"max_iters"`。
+- **代码质量**：✅ reviewer 逐行核验 `loop.py` 与 T15 brief 一致；以上不变式全部成立。无需修正。
+- **教训**：pre-flight 在 dispatch 前修掉了 4 个集成 bug（noop 行 `self.context_store.add_message=None`、`executed.append(tuple)` 塞进 `list[str]`、StopIteration 崩循环、FeedbackInjector 用独立 ContextStore 致反馈回灌到 LLM 看不见处），故 subagent 一次过——pre-flight 的价值在「避免返工轮次」，而非抓 subagent 错。
+
+### Unit 5（T16–T17 + DeepSeekClient/server）两阶段评审记录
+
+- **subagent**：sonnet，fresh session，T16/T17 brief + `.superpowers/sdd/unit5-supplement.md`（**AUTHORITATIVE** for `harness/llm/deepseek.py` 与 `harness/server.py`，brief 不覆盖这两文件）。4 文件组，严格 TDD。TDD 红绿：deepseek 2、web 3、server 2、cli 2 = 9 新测试；累计 57/57，无网络、确定性。commits：b0b6fda / adea0d1 / 9fe3c83 / 8bb6751。
+- **spec 合规**：✅ `DeepSeekClient`=supplement A 逐字（`_redact` 掩码 key、`chat` 映射 ChatCompletion→LLMResponse/ToolCall、key 仅 debug 级 redacted 日志、测试无网络）；`make_app` 路由=T17 brief 逐字（GET /、GET /approvals、POST approve/reject、GET 便捷链接）；`server.build_app` **组合**（非重定义）`make_app(srv.hitl)` + /health + /run + /activity；CLI `_run` **共享单一 ContextStore**（`cs=ContextStore(sys_prompt)` 同时喂 `AgentLoop` 与 `FeedbackInjector(cs)`，line 59-60）——关键不变式成立。与 SPEC §3 模块 6/8 + §7.2 Docker 凭据流 + §5.3 一致。
+- **代码质量发现（reviewer 修正，2 个 Minor，commit e62e226）**：
+  1. **app.py 死 `serve()`**：T17 brief 原含 `serve(host,port)`（standalone HITL-only UI），但 CLI `serve` 命令调 `harness.server.serve`（full app，含 /health /run /activity），故 `app.py.serve` 零调用方、为死代码。supplement 已确立 `server.serve` 为唯一入口。reviewer 删除（YAGNI），并同步 PLAN T17 代码块 + 镜像。
+  2. **CLI `_run` 漏传 llm 配置**：非 mock 路径 `DeepSeekClient(api_key, model, base_url)` 未传 `max_tokens`/`temperature`，依赖默认值；而 `server.py` 路径已传 config 值——两条路径不一致。reviewer 补齐为 `max_tokens=cfg.llm.max_tokens, temperature=cfg.llm.temperature`，保持一致。
+- **教训**：brief 在 writing-plans 阶段写入的 `serve()`，在后续 supplement 引入 `server.py.serve` 后即被取代——评审须识别「brief-mandated 但已被后续设计 superseded」的死代码，而非因「brief 里有」就保留。两处 fix 均直接修正（§3.5 reviewer 职责）。
+- **已知局限（README 记）**：serve HITL 单用户；`POST /run?mock=true` 回放固定 demo 脚本；线程化 `/run` 仅 start-only 测试（确定性 HITL 机制由 `tests/demo` + integration 证明）。
