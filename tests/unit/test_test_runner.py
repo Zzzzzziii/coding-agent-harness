@@ -25,5 +25,5 @@ def test_parse_errors_and_skipped():
 
 def test_unparseable_returns_raw():
     tf = TestRunner().parse(make("totally not pytest output"))
-    assert tf.passed == 0 and tf.failed == 0
+    assert tf.passed == 0 and tf.failed == 0 and not tf.success
     assert tf.raw_output == "totally not pytest output"

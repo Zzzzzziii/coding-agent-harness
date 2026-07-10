@@ -295,8 +295,8 @@ class TestFeedback:
     raw_output: str
     __test__ = False
     @property
-    def success(self) -> bool:         # 派生属性：failed == 0，避免与 failed 状态不一致
-        return self.failed == 0
+    def success(self) -> bool:         # failed==0 且 passed>0；unparseable 时 passed=0 → False（避免误报通过）
+        return self.failed == 0 and self.passed > 0
 
 @dataclass
 class AgentRunResult:

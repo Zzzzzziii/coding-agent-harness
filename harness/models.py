@@ -38,7 +38,7 @@ class TestFeedback:
     __test__ = False  # suppress PytestCollectionWarning (class name starts with "Test")
     @property
     def success(self) -> bool:
-        return self.failed == 0
+        return self.failed == 0 and self.passed > 0
 
 @dataclass
 class AgentRunResult:

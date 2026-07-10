@@ -36,7 +36,7 @@
 |---|---|---|---|---|
 | 1 | T1–T5 core | sonnet | ✅ | c41af42..276e944 (+review fix) |
 | 2 | T6–T9 governance ★ | sonnet | ✅ | d420512..e79896f |
-| 3 | T10–T14 tools/feedback/memory | haiku | 待 | — |
+| 3 | T10–T14 tools/feedback/memory | sonnet | ✅ | 08075e0..ac61cac (+review fix) |
 | 4 | T15 loop ★ | sonnet | 待 | — |
 | 5 | T16–T17 cli/web | sonnet | 待 | — |
 | 6 | T18–T19 integration/demo ★ | sonnet | 待 | — |
@@ -59,3 +59,11 @@
 - **代码质量**：✅ 全部确定性代码、移除 LLM 即可单测（A.4-C 判据满足）。reviewer 核验 `pipeline.py` 与 T9 逐行一致。
 - **subagent 发现 + 自修**：Guardrail 正则缺 `re.IGNORECASE`——测试用 `"DROP TABLE users"`（大写）匹配小写 pattern `drop\s+(table|database)` 失败。subagent 自行加 IGNORECASE 修正（真实命令大小写不定，合理）。reviewer 已把该修正回写 PLAN T7。
 - **评审期间的 plan 勘误**（reviewer 在 dispatch Unit 3 前自查 T12/T13 brief）：① T12 `test_parse_errors_and_skipped` 喂的是 summary 行却断言 `len(errors)>=2`，但 `errors` 来自 `FAILED`/`ERROR` **逐行**匹配 → 已改测试补 ERROR 行；② T12 删除未用的 `SUMMARY` 正则；③ T13 `inject_test` 断言 `"FAILED: 1"` 与实现格式 `"[test FAILED] ... failed=1"` 不符 → 改为 `"failed=1"`。教训：**正则/序列化类 brief 的「测试断言字符串」必须与实现输出格式逐字符核对**——这类 mismatch TDD 红绿能暴露，但在 dispatch 前修掉省一轮返工。
+
+### Unit 3（T10–T14，工具/反馈/记忆）两阶段评审记录
+
+- **subagent**：sonnet，fresh session，5 个 brief。TDD：tool_registry 3、builtin_tools 3、test_runner 4、feedback_injector 3、context_store 3 = 16 新测试；累计 46/46，无网络、确定性。commits：08075e0 / 5b48ecd / ae79813 / c2860c9 / ac61cac。
+- **spec 合规**：✅ 工具分发/反馈解析回灌/记忆截断与 SPEC §3/§11.2 一致；`FeedbackInjector` 共享 loop 的 `ContextStore`（评审前已修的 PLAN 设计）。
+- **代码质量发现（reviewer 修正，Important）**：**`TestFeedback.success` 语义 bug**。subagent 自报「T12 brief 不一致：unparseable 输出 `failed=0` 使 `success` 属性为 True，与测试 `not tf.success` 矛盾」，其处理是**删掉该断言**让测试过——但这掩盖了真 bug：unparseable 输出会让循环回灌「test PASSED」给 LLM（误报通过）。reviewer 改为修**属性本身**：`success = failed==0 and passed>0`（unparseable 时 passed=0 → False），并恢复被删的断言。同步 PLAN/SPEC。教训：**subagent 倾向于「改测试迁就实现」而非「改设计修正语义」**——评审须警惕这类把红线涂绿的行为，追问「测试断言被删是否在掩盖设计缺陷」。
+- **TDD 顺序小偏离（已记录）**：subagent 因 T13 依赖 T14，先实现 T14 再跑 T13 GREEN，跳过 T14 的 RED 步。§3.6 允许的偏离，已记录；T14 简单（列表截断），不影响正确性。
+- **plan 扩展预备**：为 Unit 5（CLI/Web）发现 CLI 引用未定义的 `DeepSeekClient`、`creds set` 用明文 input——已写 `.superpowers/sdd/unit5-supplement.md`（DeepSeekClient + serve 集成 + 修正），T16 `serve` 改调 `harness.server.serve`。

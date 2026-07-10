@@ -65,7 +65,7 @@ class TestFeedback:
     raw_output: str
     @property
     def success(self) -> bool:      # failed == 0
-        return self.failed == 0
+        return self.failed == 0 and self.passed > 0
 
 @dataclass
 class AgentRunResult:
@@ -317,7 +317,7 @@ class TestFeedback:
     __test__ = False  # suppress PytestCollectionWarning (class name starts with "Test")
     @property
     def success(self) -> bool:
-        return self.failed == 0
+        return self.failed == 0 and self.passed > 0
 
 @dataclass
 class AgentRunResult:
@@ -1533,7 +1533,9 @@ def main(argv=None) -> int:
         if sub == "status":
             print(f"configured: {'true' if cs.get() else 'false'}"); return 0
         if sub == "set":
-            key = input("Paste DEEPSEEK_API_KEY: ").strip(); cs.set(key); print("stored."); return 0
+            import getpass
+            key = getpass.getpass("Paste DEEPSEEK_API_KEY (hidden, no echo): ").strip()
+            cs.set(key); print("stored."); return 0
         if sub == "clear":
             cs.clear(); print("cleared."); return 0
         print(f"unknown creds subcommand: {sub}"); return 2
@@ -1995,7 +1997,7 @@ jobs:
 | T7 guardrail | ✅ | 29f43bd | Unit 2 ★（deny/gate 两级 + re.IGNORECASE，subagent 发现并修正） |
 | T8 hitl | ✅ | 17ba4aa | Unit 2 ★（pending→approved|rejected 单向，float ts，created_at） |
 | T9 gov pipeline | ✅ | e79896f | Unit 2 ★（scope→guardrail→hitl，可注入 Approver；demo①③ 依赖其 wiring） |
-| T10–T14 tools/feedback/memory | ⏳ | — | Unit 3 |
+| T10–T14 tools/feedback/memory | ✅ | 08075e0..ac61cac (+fix) | Unit 3；review 修 `TestFeedback.success = failed==0 and passed>0`（unparseable 不再误报 PASSED） |
 | T15 loop | ⏳ | — | Unit 4 ★ |
 | T16–T17 cli/web | ⏳ | — | Unit 5 |
 | T18–T19 integration/demo | ⏳ | — | Unit 6 ★ |
