@@ -39,7 +39,7 @@
 | 3 | T10–T14 tools/feedback/memory | sonnet | ✅ | 08075e0..ac61cac (+review fix) |
 | 4 | T15 loop ★ | sonnet | ✅ | 147f6d3 |
 | 5 | T16–T17 cli/web + deepseek/server | sonnet | ✅ | b0b6fda..8bb6751 (+fix e62e226) |
-| 6 | T18–T19 integration/demo ★ | sonnet | 待 | — |
+| 6 | T18–T19 integration/demo ★ | sonnet | ✅ | 8ea66b4 + cd20804 |
 | 7 | T20–T22 packaging/docker/CI | haiku | 待 | — |
 | 8 | T23 README | sonnet | 待 | — |
 
@@ -84,3 +84,10 @@
   2. **CLI `_run` 漏传 llm 配置**：非 mock 路径 `DeepSeekClient(api_key, model, base_url)` 未传 `max_tokens`/`temperature`，依赖默认值；而 `server.py` 路径已传 config 值——两条路径不一致。reviewer 补齐为 `max_tokens=cfg.llm.max_tokens, temperature=cfg.llm.temperature`，保持一致。
 - **教训**：brief 在 writing-plans 阶段写入的 `serve()`，在后续 supplement 引入 `server.py.serve` 后即被取代——评审须识别「brief-mandated 但已被后续设计 superseded」的死代码，而非因「brief 里有」就保留。两处 fix 均直接修正（§3.5 reviewer 职责）。
 - **已知局限（README 记）**：serve HITL 单用户；`POST /run?mock=true` 回放固定 demo 脚本；线程化 `/run` 仅 start-only 测试（确定性 HITL 机制由 `tests/demo` + integration 证明）。
+
+### Unit 6（T18–T19，集成测试 + A.6 机制 demo）两阶段评审记录 ★ 重点维度交付物
+
+- **subagent**：sonnet，fresh session，task-18/19 brief（均含完整测试代码，verbatim transcription）。2 文件组。TDD 红绿：T18 3 测试（read→run_tests→write→run_tests→pass 全循环、scope-fence 阻断越界写、deny 阻断 `rm -rf /`）、T19 3 demo（①guardrail 硬阻断 ②feedback 自纠 ③HITL reject→retry）。累计 63 全通过（60 unit+integration + 3 demo）。commits：8ea66b4 / cd20804。
+- **spec 合规**：✅ A.6 三个行为全覆盖且确定性（MockLLMClient，无网络、无 LLM key），与 SPEC §A.6 + §12 一致；`-m demo` 独立可跑（3 pass）。重点维度（治理）的机制通过 demo 在 mock LLM 下被证明——满足 A.4-C「移除真实 LLM，机制仍可确定性单测」。
+- **代码质量**：✅ commit 边界干净（8ea66b4 只含 `tests/integration/*`、cd20804 只含 `tests/demo/*`，未碰 harness 源码、未误 `git add` 工作树其他改动）；断言有效（demo① `blocked+denied+executed==[]`、demo② `success+iters==5+actions[1/3].tool=="run_tests"`、demo③ `status=="rejected"+executed 不含 push --force 含 status`——非 assert-nothing）；brief 代码 verbatim（行数吻合 42/47/74）；demo marker 无 warning（`pyproject [tool.pytest.ini_options] markers` 已注册）。**一次过，无需 fix**。
+- **教训**：dispatch 前对三个关键点（`ScriptedTool.__call__` 接口、pipeline `rejected→blocked=True` 语义、demo marker 已注册）的 pre-flight 核验，使 transcription 任务一次过——pre-flight 把「subagent 会撞的墙」提前拆掉，省一轮返工。与 Unit 4（pre-flight 修 4 bug 致一次过）同构：**集成/测试任务的 dispatch 前核验，价值最高**。
