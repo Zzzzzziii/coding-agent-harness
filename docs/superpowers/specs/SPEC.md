@@ -243,9 +243,14 @@
 ## 6. 数据模型
 
 ```python
+# 经冷启动验证（见 SPEC_PROCESS.md §4.5）后与 PLAN 对齐的澄清：
+#   - 类型用 str + 注释（放弃 Literal，换取可直接粘贴的代码 + 运行时校验；CI 不跑 mypy）。
+#   - Action 携带治理结果字段（blocked/status…），这是 demo 断言所必需的。
+#   - 时间戳用 float（由调用方注入），保证 mock-LLM 下确定性可测（呼应 A.4-C）。
+
 @dataclass
 class Message:
-    role: Literal["system", "user", "assistant", "tool"]
+    role: str                          # "system" | "user" | "assistant" | "tool"
     content: str
     tool_call_id: str | None = None    # 用于关联 tool 调用与结果
 
@@ -254,6 +259,10 @@ class Action:
     tool: str                          # "read_file" | "write_file" | "run_shell" | "run_tests"
     args: dict                         # 工具参数
     raw_llm_response: str | None       # 原始 LLM 输出，用于调试
+    blocked: bool = False              # 由 Governance.check 写回
+    block_reason: str | None = None
+    approval_id: str | None = None     # HITL 审批 id
+    status: str | None = None          # HITL 结果: "approved" | "rejected" | None
 
 @dataclass
 class ToolResult:
@@ -265,17 +274,18 @@ class ToolResult:
 class GovernanceDecision:
     blocked: bool
     reason: str
-    layer: Literal["scope_fence", "guardrail", "hitl"] | None
-    approval_id: str | None            # HITL 时生成
+    layer: str | None = None           # "scope_fence" | "guardrail" | "hitl"
+    approval_id: str | None = None     # HITL 时生成
 
 @dataclass
 class ApprovalRecord:
     id: str
     action: Action
-    status: Literal["pending", "approved", "rejected"]
-    created_at: datetime
-    decided_at: datetime | None = None
-    feedback_to_agent: str | None      # 回灌给 agent 的拒绝理由
+    status: str = "pending"            # "pending" | "approved" | "rejected"
+    created_at: float = 0.0            # 由调用方注入的时间戳，保证确定性测试
+    decided_at: float | None = None
+    feedback_to_agent: str | None = None  # 回灌给 agent 的拒绝理由
+    __test__ = False                   # 抑制 pytest 把 Test* 类误当测试类收集
 
 @dataclass
 class TestFeedback:
@@ -283,11 +293,14 @@ class TestFeedback:
     failed: int
     errors: list[str]
     raw_output: str
-    success: bool                      # failed == 0
+    __test__ = False
+    @property
+    def success(self) -> bool:         # 派生属性：failed == 0，避免与 failed 状态不一致
+        return self.failed == 0
 
 @dataclass
 class AgentRunResult:
-    final_status: Literal["success", "failed", "max_iters", "error"]
+    final_status: str                  # "success" | "failed" | "max_iters" | "error"
     iterations: int
     actions: list[Action]
     executed_commands: list[str]
@@ -359,7 +372,7 @@ docker run -it --rm \
 
 | 选型 | 理由 |
 |---|---|
-| **Python 3.12** | 生态成熟，LLM SDK 丰富，pytest 测试体验好，上手快 |
+| **Python 3.11+** | 生态成熟，LLM SDK 丰富，pytest 测试体验好，上手快（开发机 3.11.9；Docker 镜像 `python:3.12-slim`） |
 | **DeepSeek (deepseek-chat)** | OpenAI 兼容 API，价格低，编码能力足够 |
 | **`openai` 库 + 自定义 base_url** | DeepSeek API 兼容 OpenAI 格式，复用成熟 SDK，无需自写 HTTP |
 | **FastAPI + uvicorn** | 轻量 WebUI 后端，异步支持好，自带 OpenAPI 文档 |
@@ -436,13 +449,18 @@ Action 产生
   ▼
 Layer 1: ScopeFence (范围围栏)
   - 白名单路径检查：path 是否在 allowed_paths 内？
+  - 算法：os.path.realpath + os.path.normcase + os.sep 段安全比较
+    （normcase 在 Windows 小写化、POSIX 恒等 → 跨平台一致）
+  - 处理：相对路径规范化、符号链接解析、Windows 大小写、路径穿越(../)
+  - 路径无需真实存在（purepath 风格的规范化比较，不触发 FileNotFoundError）
   - 否 → 直接拒绝，不进 Layer 2
   │ in scope
   ▼
-Layer 2: Guardrail (护栏)
-  - 正则模式匹配危险命令
-  - rm -rf, drop database, git push --force, fork bomb...
-  - 是 → 进入 Layer 3 (HITL)
+Layer 2: Guardrail (护栏) — 两级
+  - deny_patterns（毁灭性命令，硬阻断，不经 HITL）：rm -rf /, fork bomb
+  - dangerous_patterns（需人工审批，进 HITL）：git push --force, drop table
+  - deny 优先于 dangerous（被 deny 的不再判为 dangerous）
+  - 是(dangerous) → 进入 Layer 3 (HITL)
   │ dangerous
   ▼
 Layer 3: HITLStateMachine
@@ -520,11 +538,12 @@ agent:
 governance:
   allowed_paths:
     - "/workspace/"
-  dangerous_patterns:
+  deny_patterns:                      # 毁灭性命令，硬阻断，不经 HITL
     - 'rm\s+-rf\s+/'
+    - ':\(\)\{\s*:\|:&\s*\};:'        # fork bomb
+  dangerous_patterns:                 # 需人工审批，进 HITL
     - 'drop\s+(table|database)'
     - 'git\s+push\s+--force'
-    - ':\(\)\{\s*:\|:&\s*\};:'    # fork bomb
   hitl_timeout_seconds: 300
 
 tests:
