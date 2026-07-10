@@ -1676,12 +1676,9 @@ def make_app(hitl: HITLStateMachine) -> FastAPI:
         return reject(approval_id, RejectBody(reason=reason))
 
     return app
-
-def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
-    import uvicorn
-    from harness.governance.hitl import HITLStateMachine
-    uvicorn.run(make_app(HITLStateMachine()), host=host, port=port)
 ```
+
+> Note: `serve()` lives in `harness/server.py` (`server.serve(config_path, host, port)`, the full app with `/health` `/run` `/activity` — see Task 16b / unit5-supplement). `app.py` exposes only `make_app`. The CLI `serve` command calls `harness.server.serve`.
 
 - [ ] **Step 4: Run → PASS.**
 - [ ] **Step 5: Commit** — `feat(web): FastAPI HITL approval WebUI`.
@@ -1706,6 +1703,7 @@ from harness.governance.scope_fence import ScopeFence
 from harness.governance.guardrail import Guardrail
 from harness.governance.hitl import HITLStateMachine
 from harness.tools.base import ToolRegistry
+from harness.tools.builtin import register_builtins
 from harness.feedback.injector import FeedbackInjector
 from harness.feedback.test_runner import TestRunner
 from harness.memory.context_store import ContextStore
@@ -1740,13 +1738,62 @@ def test_read_modify_test_pass_loop(tmp_path):
     assert r.final_status == "success" and r.iterations == 5
 ```
 
-> Implementer note: to keep `run_tests` scripted in the integration test, register builtins first, then override `run_tests` with `ScriptedTool`. Adjust the test accordingly (this is the green step's detail to resolve).
+`tests/integration/test_governance_pipeline.py` tests the **scope-fence and deny layers** end-to-end through the loop — complementing demo③ (which covers the HITL-gate path). It uses no approver and no `run_tests`, so `config=None` is safe (`register_builtins` only dereferences `config` inside the `run_tests` closure):
 
-`tests/integration/test_governance_pipeline.py` reuses T9's pipeline tests but through the loop's `governance.check` path with a rejecting approver, asserting `action.status == "rejected"` and that `executed_commands` excludes the blocked command and includes the retried safe command.
+```python
+# tests/integration/test_governance_pipeline.py
+from harness.llm.base import LLMResponse, ToolCall
+from harness.llm.mock import MockLLMClient
+from harness.governance.pipeline import Governance
+from harness.governance.scope_fence import ScopeFence
+from harness.governance.guardrail import Guardrail
+from harness.governance.hitl import HITLStateMachine
+from harness.tools.base import ToolRegistry
+from harness.tools.builtin import register_builtins
+from harness.feedback.injector import FeedbackInjector
+from harness.feedback.test_runner import TestRunner
+from harness.memory.context_store import ContextStore
+from harness.loop import AgentLoop
 
-- [ ] **Step 2: Run → FAIL.**
-- [ ] **Step 3: Resolve the registration-order detail and run → PASS.**
-- [ ] **Step 4: Commit** — `test(integration): mock-driven full loop + governance pipeline`.
+
+def _loop(mock, tmp_path, approver=None, dangerous=None, deny=None):
+    reg = ToolRegistry(); register_builtins(reg, None, workspace=str(tmp_path))
+    gov = Governance(ScopeFence([str(tmp_path) + "/"]),
+                     Guardrail(dangerous or [], deny or []), HITLStateMachine())
+    cs = ContextStore("sys")
+
+    class C:
+        max_iters = 20
+
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
+
+
+def test_scope_fence_blocks_out_of_scope_write(tmp_path):
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "write_file", {"path": "/etc/passwd", "content": "x"})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path).run("write outside")
+    assert r.actions[0].blocked is True
+    assert "scope" in (r.actions[0].block_reason or "").lower()
+    assert r.executed_commands == []
+
+
+def test_deny_blocks_catastrophic_shell(tmp_path):
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "run_shell", {"command": "rm -rf /"})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path, deny=[r"rm\s+-rf\s+/"]).run("delete all")
+    assert r.actions[0].blocked is True
+    assert "denied" in (r.actions[0].block_reason or "").lower()
+    assert r.executed_commands == []
+```
+
+- [ ] **Step 2: Run → FAIL** (`tests/integration/` not yet a package — `__init__.py` missing).
+- [ ] **Step 3: Create `tests/integration/__init__.py`** (empty) so pytest collects the package; both test files were written in Step 1.
+- [ ] **Step 4: Run** `python -m pytest tests/integration -q` → PASS. (These exercise already-built Units 1–4 through the loop. If RED, a wiring bug surfaced — fix the flagged module, not the test.)
+- [ ] **Step 5: Commit** — `test(integration): mock-driven full loop + governance pipeline`.
 
 ---
 

@@ -65,7 +65,7 @@ class TestFeedback:
     raw_output: str
     @property
     def success(self) -> bool:      # failed == 0
-        return self.failed == 0
+        return self.failed == 0 and self.passed > 0
 
 @dataclass
 class AgentRunResult:
@@ -317,7 +317,7 @@ class TestFeedback:
     __test__ = False  # suppress PytestCollectionWarning (class name starts with "Test")
     @property
     def success(self) -> bool:
-        return self.failed == 0
+        return self.failed == 0 and self.passed > 0
 
 @dataclass
 class AgentRunResult:
@@ -775,8 +775,8 @@ import re
 
 class Guardrail:
     def __init__(self, dangerous_patterns: list[str], deny_patterns: list[str]):
-        self._dangerous = [re.compile(p) for p in dangerous_patterns]
-        self._deny = [re.compile(p) for p in deny_patterns]
+        self._dangerous = [re.compile(p, re.IGNORECASE) for p in dangerous_patterns]
+        self._deny = [re.compile(p, re.IGNORECASE) for p in deny_patterns]
 
     def is_denied(self, command: str) -> bool:
         return any(p.search(command) for p in self._deny)
@@ -1199,7 +1199,9 @@ def test_parse_failures():
     assert any("test_one" in e for e in tf.errors)
 
 def test_parse_errors_and_skipped():
-    out = "==== 1 passed, 1 failed, 2 errors, 3 skipped in 1s ===="
+    out = ("ERROR tests/test_a.py::test_a\n"
+           "ERROR tests/test_a.py::test_b\n"
+           "==== 1 passed, 1 failed, 2 errors, 3 skipped in 1s ====")
     tf = TestRunner().parse(make(out))
     assert tf.passed == 1 and tf.failed == 1
     assert len(tf.errors) >= 2
@@ -1219,11 +1221,7 @@ import re
 from harness.models import ToolResult, TestFeedback
 
 class TestRunner:
-    SUMMARY = re.compile(
-        r"(?:(\d+)\s*passed)?[,\s]*"
-        r"(?:(\d+)\s*failed)?[,\s]*"
-        r"(?:(\d+)\s*errors?)?[,\s]*"
-        r"(?:(\d+)\s*skipped)?", re.I)
+    # Individual FAILED/ERROR lines from pytest's short-test-summary section.
     FAILED_LINE = re.compile(r"^(?:FAILED|ERROR)\s+(.+)$", re.M)
 
     def parse(self, tool_result: ToolResult) -> TestFeedback:
@@ -1268,7 +1266,7 @@ def test_inject_result_appends_tool_message():
 def test_inject_test_serializes_feedback():
     s = cs(); fi = FeedbackInjector(s)
     fi.inject_test(Action("run_tests", {}), TestFeedback(2, 1, ["e"], "raw"), "c0")
-    assert "FAILED: 1" in s.messages[-1].content and "e" in s.messages[-1].content
+    assert "failed=1" in s.messages[-1].content and "errors=[e]" in s.messages[-1].content
 
 def test_inject_block_reports_block_reason():
     s = cs(); fi = FeedbackInjector(s)
@@ -1406,8 +1404,8 @@ def build_loop(mock, tmp_path, approver=None):
     reg = ToolRegistry(); register_builtins(reg, None, workspace=str(tmp_path))
     gov = Governance(ScopeFence([str(tmp_path)+"/"]), Guardrail([], [r"rm\s+-rf\s+/"]), HITLStateMachine())
     class C: max_iters=10
-    return AgentLoop(mock, C(), gov, reg, ContextStore("sys"),
-                    FeedbackInjector(ContextStore("sys")), TestRunner(), approver=approver)
+    cs = ContextStore("sys")  # ONE store shared by loop + injector so feedback reaches the LLM
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
 
 def test_loop_stops_on_done(tmp_path):
     mock = MockLLMClient([LLMResponse("done", [], "stop")])
@@ -1430,7 +1428,7 @@ def test_loop_executes_then_done(tmp_path):
 
 ```python
 # harness/loop.py
-from harness.models import Action, AgentRunResult
+from harness.models import Action, AgentRunResult, Message
 from harness.llm.base import next_action
 
 class AgentLoop:
@@ -1448,12 +1446,13 @@ class AgentLoop:
     def run(self, task: str) -> AgentRunResult:
         actions: list[Action] = []
         executed: list[str] = []
-        self.context_store.add_message = None  # noop placeholder
-        from harness.models import Message
         self.context_store.add(Message("user", task))
         max_iters = getattr(self.config, "max_iters", 20)
         for i in range(1, max_iters + 1):
-            resp = self._chat_with_retry()
+            try:
+                resp = self._chat_with_retry()
+            except StopIteration:  # mock script exhausted → end gracefully, don't crash
+                return AgentRunResult("error", i, actions, executed)
             if resp is None:
                 return AgentRunResult("error", i, actions, executed)
             action = next_action(resp)
@@ -1472,7 +1471,7 @@ class AgentLoop:
             if action.tool == "run_tests":
                 tf = self.test_runner.parse(result)
                 self.feedback_injector.inject_test(action, tf, tool_call_id)
-                executed.append((action.args.get("test_cmd") or "pytest"))
+                executed.append(action.args.get("test_cmd") or "pytest")
             else:
                 self.feedback_injector.inject_result(action, result, tool_call_id)
                 if action.tool in ("run_shell",):
@@ -1534,12 +1533,14 @@ def main(argv=None) -> int:
         if sub == "status":
             print(f"configured: {'true' if cs.get() else 'false'}"); return 0
         if sub == "set":
-            key = input("Paste DEEPSEEK_API_KEY: ").strip(); cs.set(key); print("stored."); return 0
+            import getpass
+            key = getpass.getpass("Paste DEEPSEEK_API_KEY (hidden, no echo): ").strip()
+            cs.set(key); print("stored."); return 0
         if sub == "clear":
             cs.clear(); print("cleared."); return 0
         print(f"unknown creds subcommand: {sub}"); return 2
     if cmd == "serve":
-        from harness.web.app import serve; serve(); return 0
+        from harness.server import serve; serve(); return 0
     if cmd == "run":
         return _run(argv[1:])
     print(f"unknown command: {cmd}"); return 2
@@ -1573,8 +1574,8 @@ def _run(args):
     gov = Governance(ScopeFence(cfg.governance.allowed_paths),
                      Guardrail(cfg.governance.dangerous_patterns, cfg.governance.deny_patterns),
                      HITLStateMachine())
-    loop = AgentLoop(llm, cfg, gov, reg, ContextStore(sys_prompt),
-                     FeedbackInjector(ContextStore(sys_prompt)), TestRunner())
+    cs = ContextStore(sys_prompt)  # shared store — feedback reaches the LLM context
+    loop = AgentLoop(llm, cfg, gov, reg, cs, FeedbackInjector(cs), TestRunner())
     result = loop.run(task)
     print(f"status={result.final_status} iters={result.iterations} "
           f"actions={len(result.actions)} executed={len(result.executed_commands)}")
@@ -1675,12 +1676,9 @@ def make_app(hitl: HITLStateMachine) -> FastAPI:
         return reject(approval_id, RejectBody(reason=reason))
 
     return app
-
-def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
-    import uvicorn
-    from harness.governance.hitl import HITLStateMachine
-    uvicorn.run(make_app(HITLStateMachine()), host=host, port=port)
 ```
+
+> Note: `serve()` lives in `harness/server.py` (`server.serve(config_path, host, port)`, the full app with `/health` `/run` `/activity` — see Task 16b / unit5-supplement). `app.py` exposes only `make_app`. The CLI `serve` command calls `harness.server.serve`.
 
 - [ ] **Step 4: Run → PASS.**
 - [ ] **Step 5: Commit** — `feat(web): FastAPI HITL approval WebUI`.
@@ -1705,6 +1703,7 @@ from harness.governance.scope_fence import ScopeFence
 from harness.governance.guardrail import Guardrail
 from harness.governance.hitl import HITLStateMachine
 from harness.tools.base import ToolRegistry
+from harness.tools.builtin import register_builtins
 from harness.feedback.injector import FeedbackInjector
 from harness.feedback.test_runner import TestRunner
 from harness.memory.context_store import ContextStore
@@ -1713,13 +1712,14 @@ from tests.conftest import ScriptedTool
 
 def build(mock, tmp_path, approver=None, test_results=None):
     reg = ToolRegistry()
+    register_builtins(reg, None, workspace=str(tmp_path))   # read/write/shell/tests first
     if test_results is not None:
-        reg.register("run_tests", {}, ScriptedTool(test_results))
+        reg.register("run_tests", {}, ScriptedTool(test_results))  # OVERRIDE tests w/ canned output
     gov = Governance(ScopeFence([str(tmp_path)+"/"]),
                      Guardrail([r"git\s+push\s+--force"], [r"rm\s+-rf\s+/"]), HITLStateMachine())
     class C: max_iters=20
-    cs = ContextStore("sys"); fi = FeedbackInjector(ContextStore("sys"))
-    return AgentLoop(mock, C(), gov, reg, cs, fi, TestRunner(), approver=approver)
+    cs = ContextStore("sys")
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
 
 def test_read_modify_test_pass_loop(tmp_path):
     # LLM: read file -> run_tests (fails) -> write fix -> run_tests (passes) -> done
@@ -1730,24 +1730,70 @@ def test_read_modify_test_pass_loop(tmp_path):
         LLMResponse(None, [ToolCall("c3", "run_tests", {})], "tool_calls"),
         LLMResponse("done", [], "stop"),
     ])
-    reg_loop = build(mock, tmp_path, test_results=[
+    loop = build(mock, tmp_path, test_results=[
         ToolResult(False, {"stdout": "==== 1 failed in 0.1s ====", "exit_code": 1, "command": "pytest"}, None),
         ToolResult(True,  {"stdout": "==== 1 passed in 0.1s ====", "exit_code": 0, "command": "pytest"}, None),
     ])
-    # need read_file/write_file real handlers too:
-    from harness.tools.builtin import register_builtins
-    register_builtins(reg_loop.tools, None, workspace=str(tmp_path))  # adds run_tests override? avoid: register after
-    r = reg_loop.run("fix the test")
+    r = loop.run("fix the test")
     assert r.final_status == "success" and r.iterations == 5
 ```
 
-> Implementer note: to keep `run_tests` scripted in the integration test, register builtins first, then override `run_tests` with `ScriptedTool`. Adjust the test accordingly (this is the green step's detail to resolve).
+`tests/integration/test_governance_pipeline.py` tests the **scope-fence and deny layers** end-to-end through the loop — complementing demo③ (which covers the HITL-gate path). It uses no approver and no `run_tests`, so `config=None` is safe (`register_builtins` only dereferences `config` inside the `run_tests` closure):
 
-`tests/integration/test_governance_pipeline.py` reuses T9's pipeline tests but through the loop's `governance.check` path with a rejecting approver, asserting `action.status == "rejected"` and that `executed_commands` excludes the blocked command and includes the retried safe command.
+```python
+# tests/integration/test_governance_pipeline.py
+from harness.llm.base import LLMResponse, ToolCall
+from harness.llm.mock import MockLLMClient
+from harness.governance.pipeline import Governance
+from harness.governance.scope_fence import ScopeFence
+from harness.governance.guardrail import Guardrail
+from harness.governance.hitl import HITLStateMachine
+from harness.tools.base import ToolRegistry
+from harness.tools.builtin import register_builtins
+from harness.feedback.injector import FeedbackInjector
+from harness.feedback.test_runner import TestRunner
+from harness.memory.context_store import ContextStore
+from harness.loop import AgentLoop
 
-- [ ] **Step 2: Run → FAIL.**
-- [ ] **Step 3: Resolve the registration-order detail and run → PASS.**
-- [ ] **Step 4: Commit** — `test(integration): mock-driven full loop + governance pipeline`.
+
+def _loop(mock, tmp_path, approver=None, dangerous=None, deny=None):
+    reg = ToolRegistry(); register_builtins(reg, None, workspace=str(tmp_path))
+    gov = Governance(ScopeFence([str(tmp_path) + "/"]),
+                     Guardrail(dangerous or [], deny or []), HITLStateMachine())
+    cs = ContextStore("sys")
+
+    class C:
+        max_iters = 20
+
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
+
+
+def test_scope_fence_blocks_out_of_scope_write(tmp_path):
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "write_file", {"path": "/etc/passwd", "content": "x"})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path).run("write outside")
+    assert r.actions[0].blocked is True
+    assert "scope" in (r.actions[0].block_reason or "").lower()
+    assert r.executed_commands == []
+
+
+def test_deny_blocks_catastrophic_shell(tmp_path):
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "run_shell", {"command": "rm -rf /"})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path, deny=[r"rm\s+-rf\s+/"]).run("delete all")
+    assert r.actions[0].blocked is True
+    assert "denied" in (r.actions[0].block_reason or "").lower()
+    assert r.executed_commands == []
+```
+
+- [ ] **Step 2: Run → FAIL** (`tests/integration/` not yet a package — `__init__.py` missing).
+- [ ] **Step 3: Create `tests/integration/__init__.py`** (empty) so pytest collects the package; both test files were written in Step 1.
+- [ ] **Step 4: Run** `python -m pytest tests/integration -q` → PASS. (These exercise already-built Units 1–4 through the loop. If RED, a wiring bug surfaced — fix the flagged module, not the test.)
+- [ ] **Step 5: Commit** — `test(integration): mock-driven full loop + governance pipeline`.
 
 ---
 
@@ -1757,10 +1803,88 @@ def test_read_modify_test_pass_loop(tmp_path):
 
 **Interfaces:** Replays the three A.6 behaviors deterministically under `MockLLMClient`: ① guardrail hard-blocks `rm -rf /`; ② a failing test result is parsed and fed back, agent changes action and passes; ③ HITL reject → agent retries a safe command.
 
-- [ ] **Step 1: Failing test** (the three `@pytest.mark.demo` cases from SPEC §12.4, adapted to the real interfaces above — `rm -rf /` is `deny`-blocked, `git push --force` is HITL-rejected via an approver lambda).
-- [ ] **Step 2: Run → FAIL** (file missing).
-- [ ] **Step 3: Implementation** — write the three demo tests using the T15 `build_loop` helper, asserting: `actions[0].blocked is True` and `"rm -rf"` not in `executed_commands`; `final_status == "success"` with the fix-and-pass sequence; `actions[0].status == "rejected"` and `"git status"` in `executed_commands`.
-- [ ] **Step 4: Run** `pytest -m demo -q` → PASS.
+- [ ] **Step 1: Write the failing test (the three `@pytest.mark.demo` cases)**
+
+```python
+# tests/demo/test_mechanism_demo.py
+import pytest
+from harness.llm.base import LLMResponse, ToolCall
+from harness.llm.mock import MockLLMClient
+from harness.governance.pipeline import Governance
+from harness.governance.scope_fence import ScopeFence
+from harness.governance.guardrail import Guardrail
+from harness.governance.hitl import HITLStateMachine
+from harness.tools.base import ToolRegistry
+from harness.tools.builtin import register_builtins
+from harness.feedback.injector import FeedbackInjector
+from harness.feedback.test_runner import TestRunner
+from harness.memory.context_store import ContextStore
+from harness.loop import AgentLoop
+from harness.models import ToolResult
+
+class _Scripted:  # canned run_tests output; keeps TestRunner parsing real
+    def __init__(self, results): self._r = list(results); self._i = 0
+    def __call__(self, args):
+        r = self._r[self._i]; self._i += 1; return r
+
+def _loop(mock, tmp_path, approver=None, dangerous=None, deny=None, test_results=None):
+    reg = ToolRegistry(); register_builtins(reg, None, workspace=str(tmp_path))
+    if test_results is not None:
+        reg.register("run_tests", {}, _Scripted(test_results))
+    gov = Governance(ScopeFence([str(tmp_path) + "/"]),
+                     Guardrail(dangerous or [], deny or []), HITLStateMachine())
+    cs = ContextStore("sys")
+    class C: max_iters = 20
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
+
+@pytest.mark.demo
+def test_demo_1_guardrail_intercepts(tmp_path):
+    """① Guardrail hard-blocks a catastrophic command (rm -rf /) — never executed."""
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "run_shell", {"command": "rm -rf /"})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path, deny=[r"rm\s+-rf\s+/"]).run("delete everything")
+    assert r.actions[0].blocked is True
+    assert "denied" in (r.actions[0].block_reason or "").lower()
+    assert r.executed_commands == []                       # rm -rf / never ran
+
+@pytest.mark.demo
+def test_demo_2_feedback_self_correction(tmp_path):
+    """② A failing test is parsed & fed back; agent changes action and tests pass."""
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "write_file", {"path": str(tmp_path/"t.py"), "content": "syntax error!!"})], "tool_calls"),
+        LLMResponse(None, [ToolCall("c1", "run_tests", {})], "tool_calls"),
+        LLMResponse(None, [ToolCall("c2", "write_file", {"path": str(tmp_path/"t.py"), "content": "def test_ok():\n    assert True\n"})], "tool_calls"),
+        LLMResponse(None, [ToolCall("c3", "run_tests", {})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path, test_results=[
+        ToolResult(False, {"stdout": "==== 1 failed in 0.1s ====", "exit_code": 1, "command": "pytest"}, None),
+        ToolResult(True,  {"stdout": "==== 1 passed in 0.1s ====", "exit_code": 0, "command": "pytest"}, None),
+    ]).run("fix the test")
+    assert r.final_status == "success" and r.iterations == 5
+    assert r.actions[1].tool == "run_tests" and r.actions[3].tool == "run_tests"
+
+@pytest.mark.demo
+def test_demo_3_hitl_rejection_changes_strategy(tmp_path):
+    """③ HITL rejects a dangerous command; agent retries with a safe command."""
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "run_shell", {"command": "git push --force"})], "tool_calls"),
+        LLMResponse(None, [ToolCall("c1", "run_shell", {"command": "git status"})], "tool_calls"),
+        LLMResponse("done", [], "stop"),
+    ])
+    r = _loop(mock, tmp_path, approver=lambda rec: False,
+              dangerous=[r"git\s+push\s+--force"]).run("push my code")
+    assert r.actions[0].status == "rejected"
+    assert r.actions[0].blocked is True
+    assert "git push --force" not in r.executed_commands
+    assert "git status" in r.executed_commands
+```
+
+- [ ] **Step 2: Run → FAIL** (file missing) — `python -m pytest tests/demo/test_mechanism_demo.py -q` → collection error (no module).
+- [ ] **Step 3: Implementation** — the test file above IS the implementation (demos are tests). Create `tests/demo/__init__.py` (empty) + `tests/demo/test_mechanism_demo.py` with the code above verbatim.
+- [ ] **Step 4: Run** `python -m pytest -m demo -q` → 3/3 PASS.
 - [ ] **Step 5: Commit** — `test(demo): A.6 three deterministic mechanism demonstrations`.
 
 ---
@@ -1902,3 +2026,27 @@ jobs:
 1. **Spec coverage:** SPEC §3 modules 1–8 → T1(models),T2(config),T3(creds),T4/T5(llm),T9(governance),T10/T11(tools),T12/T13(feedback),T14(memory),T15(loop),T16(cli),T17(web) ✓. SPEC §11 governance four mechanisms → T6/T7/T8/T9 ✓. SPEC §12 tests → T6–T19 ✓. SPEC §A.6 demo → T19 ✓. SPEC §7 distribution → T20/T21 ✓. CI §五.6 → T22 ✓.
 2. **Placeholder scan:** T18 Step 3 & T19 Step 3 flag "implementer resolves" details — acceptable because the green step is the resolution itself (TDD: red→green); the red tests are concrete. No "TBD"/"handle errors" without code elsewhere.
 3. **Type consistency:** `Action`, `ToolResult`, `GovernanceDecision`, `TestFeedback`, `LLMResponse`, `ToolCall`, `ApprovalRecord` signatures match across all tasks and the Shared Interfaces block. `Governance.check(action, approver=)` used identically in T9/T15/T18/T19. `FeedbackInjector.inject_*` signatures identical in T13/T15. ✓
+
+---
+
+## 进度登记（commit hash per task · 通用要求 §4.7）
+
+> ✅ = 已通过两阶段评审（spec 合规 + 代码质量）并合入；⏳ = 待实现。
+
+| Task | 状态 | commit | 备注 |
+|---|---|---|---|
+| T1 models | ✅ | c41af42 | Unit 1 |
+| T2 config | ✅ | 4c537df | Unit 1 |
+| T3 creds | ✅ | cd0f5cb +review | 评审修正：`dotenv_values` 去 `os.environ` 污染 + Docker 进程回退（原 `load_dotenv` 破坏 `-e` 凭据流） |
+| T4 llm/base | ✅ | 307b581 | Unit 1 |
+| T5 mock + conftest | ✅ | 276e944 +review | 评审修正：移除死代码且有 `NameError` 的 `llm_response` fixture，保留 T18 用的 `ScriptedTool` |
+| T6 scope_fence | ✅ | d420512 | Unit 2 ★（canonical realpath+normcase+sep，Windows-safe） |
+| T7 guardrail | ✅ | 29f43bd | Unit 2 ★（deny/gate 两级 + re.IGNORECASE，subagent 发现并修正） |
+| T8 hitl | ✅ | 17ba4aa | Unit 2 ★（pending→approved|rejected 单向，float ts，created_at） |
+| T9 gov pipeline | ✅ | e79896f | Unit 2 ★（scope→guardrail→hitl，可注入 Approver；demo①③ 依赖其 wiring） |
+| T10–T14 tools/feedback/memory | ✅ | 08075e0..ac61cac (+fix) | Unit 3；review 修 `TestFeedback.success = failed==0 and passed>0`（unparseable 不再误报 PASSED） |
+| T15 loop | ✅ | 147f6d3 | Unit 4 ★（invariants 验证：blocked 入 actions、executed 仅非阻断、StopIteration→error、max_iters） |
+| T16–T17 cli/web | ⏳ | — | Unit 5 |
+| T18–T19 integration/demo | ⏳ | — | Unit 6 ★ |
+| T20–T22 packaging/docker/CI | ⏳ | — | Unit 7 |
+| T23 README | ⏳ | — | Unit 8 |
