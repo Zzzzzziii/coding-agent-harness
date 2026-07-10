@@ -34,11 +34,20 @@
 
 | Unit | PLAN tasks | 模型 | 状态 | commit |
 |---|---|---|---|---|
-| 1 | T1–T5 core | haiku | 进行中 | — |
-| 2 | T6–T9 governance ★ | sonnet | 待 | — |
+| 1 | T1–T5 core | sonnet | ✅ | c41af42..276e944 (+review fix) |
+| 2 | T6–T9 governance ★ | sonnet | 进行中 | — |
 | 3 | T10–T14 tools/feedback/memory | haiku | 待 | — |
 | 4 | T15 loop ★ | sonnet | 待 | — |
 | 5 | T16–T17 cli/web | sonnet | 待 | — |
 | 6 | T18–T19 integration/demo ★ | sonnet | 待 | — |
 | 7 | T20–T22 packaging/docker/CI | haiku | 待 | — |
 | 8 | T23 README | sonnet | 待 | — |
+
+### Unit 1（T1–T5）两阶段评审记录
+
+- **subagent**：sonnet，fresh session，仅 5 个 task brief + 上下文。TDD 红绿：T1 3/3、T2 2/2、T3 3/3、T4 2/2、T5 2/2 = 12/12 通过、输出干净。commits：c41af42 / 4c537df / cd0f5cb / 307b581 / 276e944。
+- **spec 合规**：✅ 各模块签名与 SPEC §3/§6/§11.5/§7.1 一致；数据模型用冷启动对齐后的 str/property/float 版本。
+- **代码质量发现（reviewer 修正）**：
+  1. **[Important] T3 `_load()` 破坏 Docker 凭据流**：subagent 为修「`load_dotenv` 跨测试污染 `os.environ`」把 `_load()` 改成 `.env` 不存在即返回 `None`——但这会让 §7.2 的 `docker run -e DEEPSEEK_API_KEY` 在容器内（无 `.env`）取不到 key。reviewer 改用 `dotenv_values`（读 `.env` 不污染 `os.environ`）+ 进程环境回退，并补 2 个测试（进程回退、`.env` 优先于进程）。既去污染又保 Docker。教训：**subagent 的「局部正确」修法可能破坏另一条交付链路**——评审须对照 SPEC 的分发/凭据章节，而非只看测试是否绿。
+  2. **[Minor→已修] T5 conftest `llm_response` fixture**：`f"c{x}"` 引用未定义变量 `x`，任何调用即 `NameError`。核查下游 brief 无一使用它（T15/T18/T19 均内联构造 `LLMResponse`）→ 死代码。reviewer 移除该 fixture，保留 T18 实际 import 的 `ScriptedTool`。
+- **教训**：writing-plans 的 conftest fixture（`llm_response`）本身有未定义变量 bug——说明 plan 里的辅助代码同样需要评审，不能因为是「测试胶水」就免检。

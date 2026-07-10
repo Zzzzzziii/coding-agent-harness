@@ -1,19 +1,29 @@
 # harness/creds.py
-import os, stat
+import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 ENV_KEY = "DEEPSEEK_API_KEY"
 
+
 class CredentialStore:
+    """Loads the API key from `.env` (primary) or the process environment (fallback).
+
+    Reading `.env` uses dotenv_values so the process environment is never polluted
+    (avoids cross-test contamination). The process-env fallback lets Docker pass
+    the key via `docker run -e DEEPSEEK_API_KEY=...` with no `.env` in the image.
+    Status never echoes the plaintext key.
+    """
+
     def __init__(self, env_path: str = ".env"):
         self.env_path = Path(env_path)
 
     def _load(self) -> str | None:
         if self.env_path.exists():
-            load_dotenv(self.env_path, override=True)
-            return os.environ.get(ENV_KEY)
-        return None
+            vals = dotenv_values(self.env_path)
+            if vals.get(ENV_KEY):
+                return vals[ENV_KEY]
+        return os.environ.get(ENV_KEY)
 
     def get(self) -> str | None:
         return self._load()
@@ -22,23 +32,21 @@ class CredentialStore:
         return {"configured": bool(self._load())}
 
     def set(self, key: str) -> None:
-        self._write_env({ENV_KEY: key})
+        self._write_env(key)
 
     def clear(self) -> None:
-        self._write_env({ENV_KEY: ""}, remove=True)
+        self._write_env(None)
 
-    def _write_env(self, kv: dict, remove: bool = False) -> None:
-        lines = []
+    def _write_env(self, key: str | None) -> None:
+        kept = []
         if self.env_path.exists():
-            lines = [l for l in self.env_path.read_text(encoding="utf-8").splitlines()
-                     if not l.startswith(f"{ENV_KEY}=")]
-        if not remove:
-            lines.append(f"{ENV_KEY}={kv[ENV_KEY]}")
-        self.env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            kept = [ln for ln in self.env_path.read_text(encoding="utf-8").splitlines()
+                    if not ln.startswith(f"{ENV_KEY}=")]
+        if key is not None:
+            kept.append(f"{ENV_KEY}={key}")
+        self.env_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
         if os.name == "posix":
             os.chmod(self.env_path, 0o600)
-        os.environ.pop(ENV_KEY, None)
-        load_dotenv(self.env_path, override=True)
 
     @staticmethod
     def interactive_first_run(env_path: str = ".env") -> str | None:

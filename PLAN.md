@@ -1979,3 +1979,27 @@ jobs:
 1. **Spec coverage:** SPEC §3 modules 1–8 → T1(models),T2(config),T3(creds),T4/T5(llm),T9(governance),T10/T11(tools),T12/T13(feedback),T14(memory),T15(loop),T16(cli),T17(web) ✓. SPEC §11 governance four mechanisms → T6/T7/T8/T9 ✓. SPEC §12 tests → T6–T19 ✓. SPEC §A.6 demo → T19 ✓. SPEC §7 distribution → T20/T21 ✓. CI §五.6 → T22 ✓.
 2. **Placeholder scan:** T18 Step 3 & T19 Step 3 flag "implementer resolves" details — acceptable because the green step is the resolution itself (TDD: red→green); the red tests are concrete. No "TBD"/"handle errors" without code elsewhere.
 3. **Type consistency:** `Action`, `ToolResult`, `GovernanceDecision`, `TestFeedback`, `LLMResponse`, `ToolCall`, `ApprovalRecord` signatures match across all tasks and the Shared Interfaces block. `Governance.check(action, approver=)` used identically in T9/T15/T18/T19. `FeedbackInjector.inject_*` signatures identical in T13/T15. ✓
+
+---
+
+## 进度登记（commit hash per task · 通用要求 §4.7）
+
+> ✅ = 已通过两阶段评审（spec 合规 + 代码质量）并合入；⏳ = 待实现。
+
+| Task | 状态 | commit | 备注 |
+|---|---|---|---|
+| T1 models | ✅ | c41af42 | Unit 1 |
+| T2 config | ✅ | 4c537df | Unit 1 |
+| T3 creds | ✅ | cd0f5cb +review | 评审修正：`dotenv_values` 去 `os.environ` 污染 + Docker 进程回退（原 `load_dotenv` 破坏 `-e` 凭据流） |
+| T4 llm/base | ✅ | 307b581 | Unit 1 |
+| T5 mock + conftest | ✅ | 276e944 +review | 评审修正：移除死代码且有 `NameError` 的 `llm_response` fixture，保留 T18 用的 `ScriptedTool` |
+| T6 scope_fence | ⏳ | — | Unit 2 ★ |
+| T7 guardrail | ⏳ | — | Unit 2 ★ |
+| T8 hitl | ⏳ | — | Unit 2 ★ |
+| T9 gov pipeline | ⏳ | — | Unit 2 ★ |
+| T10–T14 tools/feedback/memory | ⏳ | — | Unit 3 |
+| T15 loop | ⏳ | — | Unit 4 ★ |
+| T16–T17 cli/web | ⏳ | — | Unit 5 |
+| T18–T19 integration/demo | ⏳ | — | Unit 6 ★ |
+| T20–T22 packaging/docker/CI | ⏳ | — | Unit 7 |
+| T23 README | ⏳ | — | Unit 8 |
