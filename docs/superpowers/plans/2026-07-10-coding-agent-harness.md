@@ -1898,7 +1898,7 @@ def test_demo_3_hitl_rejection_changes_strategy(tmp_path):
 
 ```makefile
 # Makefile
-.PHONY: test lint run serve docker
+.PHONY: test lint serve docker
 test:
 	pytest -q
 lint:
@@ -1952,6 +1952,23 @@ services:
       - key: DEEPSEEK_API_KEY
         sync: false   # set secret in Render dashboard; never plaintext
     healthCheckPath: /health
+```
+
+```bash
+# .dockerignore — keep the image lean and keep secrets OUT (.env is never COPYed,
+# but list it here too as defense-in-depth)
+.git
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+.superpowers/
+tests/
+docs/
+*.md
+.venv/
+.pytest_cache/
 ```
 
 - [ ] **Step 2: Verify** `docker build -t coding-harness .` succeeds locally.
