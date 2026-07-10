@@ -2047,7 +2047,7 @@ jobs:
 | T9 gov pipeline | ✅ | e79896f | Unit 2 ★（scope→guardrail→hitl，可注入 Approver；demo①③ 依赖其 wiring） |
 | T10–T14 tools/feedback/memory | ✅ | 08075e0..ac61cac (+fix) | Unit 3；review 修 `TestFeedback.success = failed==0 and passed>0`（unparseable 不再误报 PASSED） |
 | T15 loop | ✅ | 147f6d3 | Unit 4 ★（invariants 验证：blocked 入 actions、executed 仅非阻断、StopIteration→error、max_iters） |
-| T16–T17 cli/web | ⏳ | — | Unit 5 |
-| T18–T19 integration/demo | ⏳ | — | Unit 6 ★ |
+| T16–T17 cli/web | ✅ | b0b6fda..8bb6751 (+fix e62e226) | Unit 5；review 修：删 `app.py` 死 `serve()`、CLI `_run` 传 llm `max_tokens`/`temperature` |
+| T18–T19 integration/demo | ✅ | 8ea66b4 + cd20804 | Unit 6 ★（A.6 三 demo：①guardrail 硬阻断 `rm -rf /` ②feedback 自纠 ③HITL reject→retry；3 integration + 3 demo，确定性无网络，review 一次过） |
 | T20–T22 packaging/docker/CI | ⏳ | — | Unit 7 |
 | T23 README | ⏳ | — | Unit 8 |
