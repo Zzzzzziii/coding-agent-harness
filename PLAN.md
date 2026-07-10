@@ -775,8 +775,8 @@ import re
 
 class Guardrail:
     def __init__(self, dangerous_patterns: list[str], deny_patterns: list[str]):
-        self._dangerous = [re.compile(p) for p in dangerous_patterns]
-        self._deny = [re.compile(p) for p in deny_patterns]
+        self._dangerous = [re.compile(p, re.IGNORECASE) for p in dangerous_patterns]
+        self._deny = [re.compile(p, re.IGNORECASE) for p in deny_patterns]
 
     def is_denied(self, command: str) -> bool:
         return any(p.search(command) for p in self._deny)
@@ -1199,7 +1199,9 @@ def test_parse_failures():
     assert any("test_one" in e for e in tf.errors)
 
 def test_parse_errors_and_skipped():
-    out = "==== 1 passed, 1 failed, 2 errors, 3 skipped in 1s ===="
+    out = ("ERROR tests/test_a.py::test_a\n"
+           "ERROR tests/test_a.py::test_b\n"
+           "==== 1 passed, 1 failed, 2 errors, 3 skipped in 1s ====")
     tf = TestRunner().parse(make(out))
     assert tf.passed == 1 and tf.failed == 1
     assert len(tf.errors) >= 2
@@ -1219,11 +1221,7 @@ import re
 from harness.models import ToolResult, TestFeedback
 
 class TestRunner:
-    SUMMARY = re.compile(
-        r"(?:(\d+)\s*passed)?[,\s]*"
-        r"(?:(\d+)\s*failed)?[,\s]*"
-        r"(?:(\d+)\s*errors?)?[,\s]*"
-        r"(?:(\d+)\s*skipped)?", re.I)
+    # Individual FAILED/ERROR lines from pytest's short-test-summary section.
     FAILED_LINE = re.compile(r"^(?:FAILED|ERROR)\s+(.+)$", re.M)
 
     def parse(self, tool_result: ToolResult) -> TestFeedback:
@@ -1268,7 +1266,7 @@ def test_inject_result_appends_tool_message():
 def test_inject_test_serializes_feedback():
     s = cs(); fi = FeedbackInjector(s)
     fi.inject_test(Action("run_tests", {}), TestFeedback(2, 1, ["e"], "raw"), "c0")
-    assert "FAILED: 1" in s.messages[-1].content and "e" in s.messages[-1].content
+    assert "failed=1" in s.messages[-1].content and "errors=[e]" in s.messages[-1].content
 
 def test_inject_block_reports_block_reason():
     s = cs(); fi = FeedbackInjector(s)
@@ -1993,10 +1991,10 @@ jobs:
 | T3 creds | ✅ | cd0f5cb +review | 评审修正：`dotenv_values` 去 `os.environ` 污染 + Docker 进程回退（原 `load_dotenv` 破坏 `-e` 凭据流） |
 | T4 llm/base | ✅ | 307b581 | Unit 1 |
 | T5 mock + conftest | ✅ | 276e944 +review | 评审修正：移除死代码且有 `NameError` 的 `llm_response` fixture，保留 T18 用的 `ScriptedTool` |
-| T6 scope_fence | ⏳ | — | Unit 2 ★ |
-| T7 guardrail | ⏳ | — | Unit 2 ★ |
-| T8 hitl | ⏳ | — | Unit 2 ★ |
-| T9 gov pipeline | ⏳ | — | Unit 2 ★ |
+| T6 scope_fence | ✅ | d420512 | Unit 2 ★（canonical realpath+normcase+sep，Windows-safe） |
+| T7 guardrail | ✅ | 29f43bd | Unit 2 ★（deny/gate 两级 + re.IGNORECASE，subagent 发现并修正） |
+| T8 hitl | ✅ | 17ba4aa | Unit 2 ★（pending→approved|rejected 单向，float ts，created_at） |
+| T9 gov pipeline | ✅ | e79896f | Unit 2 ★（scope→guardrail→hitl，可注入 Approver；demo①③ 依赖其 wiring） |
 | T10–T14 tools/feedback/memory | ⏳ | — | Unit 3 |
 | T15 loop | ⏳ | — | Unit 4 ★ |
 | T16–T17 cli/web | ⏳ | — | Unit 5 |

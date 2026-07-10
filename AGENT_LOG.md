@@ -35,7 +35,7 @@
 | Unit | PLAN tasks | 模型 | 状态 | commit |
 |---|---|---|---|---|
 | 1 | T1–T5 core | sonnet | ✅ | c41af42..276e944 (+review fix) |
-| 2 | T6–T9 governance ★ | sonnet | 进行中 | — |
+| 2 | T6–T9 governance ★ | sonnet | ✅ | d420512..e79896f |
 | 3 | T10–T14 tools/feedback/memory | haiku | 待 | — |
 | 4 | T15 loop ★ | sonnet | 待 | — |
 | 5 | T16–T17 cli/web | sonnet | 待 | — |
@@ -51,3 +51,11 @@
   1. **[Important] T3 `_load()` 破坏 Docker 凭据流**：subagent 为修「`load_dotenv` 跨测试污染 `os.environ`」把 `_load()` 改成 `.env` 不存在即返回 `None`——但这会让 §7.2 的 `docker run -e DEEPSEEK_API_KEY` 在容器内（无 `.env`）取不到 key。reviewer 改用 `dotenv_values`（读 `.env` 不污染 `os.environ`）+ 进程环境回退，并补 2 个测试（进程回退、`.env` 优先于进程）。既去污染又保 Docker。教训：**subagent 的「局部正确」修法可能破坏另一条交付链路**——评审须对照 SPEC 的分发/凭据章节，而非只看测试是否绿。
   2. **[Minor→已修] T5 conftest `llm_response` fixture**：`f"c{x}"` 引用未定义变量 `x`，任何调用即 `NameError`。核查下游 brief 无一使用它（T15/T18/T19 均内联构造 `LLMResponse`）→ 死代码。reviewer 移除该 fixture，保留 T18 实际 import 的 `ScriptedTool`。
 - **教训**：writing-plans 的 conftest fixture（`llm_response`）本身有未定义变量 bug——说明 plan 里的辅助代码同样需要评审，不能因为是「测试胶水」就免检。
+
+### Unit 2（T6–T9，治理重点维度）两阶段评审记录
+
+- **subagent**：sonnet，fresh session，仅 4 个 governance brief + 上下文。TDD 红绿：scope_fence 4、guardrail 3、hitl 4、governance_pipeline 5 = 16 新测试；累计 30/30，无网络、确定性、无 warning。commits：d420512 / 29f43bd / 17ba4aa / e79896f。
+- **spec 合规**：✅ 三层防护（ScopeFence→Guardrail deny/gate→HITL 状态机）与 SPEC §11.2 完全一致；`Governance.check(action, approver=)` 的 deny 硬阻断（不设 status）、approver=None→pending、approver→False 设 `action.status="rejected"` wiring 正是 demo①③ 所依赖。
+- **代码质量**：✅ 全部确定性代码、移除 LLM 即可单测（A.4-C 判据满足）。reviewer 核验 `pipeline.py` 与 T9 逐行一致。
+- **subagent 发现 + 自修**：Guardrail 正则缺 `re.IGNORECASE`——测试用 `"DROP TABLE users"`（大写）匹配小写 pattern `drop\s+(table|database)` 失败。subagent 自行加 IGNORECASE 修正（真实命令大小写不定，合理）。reviewer 已把该修正回写 PLAN T7。
+- **评审期间的 plan 勘误**（reviewer 在 dispatch Unit 3 前自查 T12/T13 brief）：① T12 `test_parse_errors_and_skipped` 喂的是 summary 行却断言 `len(errors)>=2`，但 `errors` 来自 `FAILED`/`ERROR` **逐行**匹配 → 已改测试补 ERROR 行；② T12 删除未用的 `SUMMARY` 正则；③ T13 `inject_test` 断言 `"FAILED: 1"` 与实现格式 `"[test FAILED] ... failed=1"` 不符 → 改为 `"failed=1"`。教训：**正则/序列化类 brief 的「测试断言字符串」必须与实现输出格式逐字符核对**——这类 mismatch TDD 红绿能暴露，但在 dispatch 前修掉省一轮返工。
