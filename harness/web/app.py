@@ -45,9 +45,3 @@ def make_app(hitl: HITLStateMachine) -> FastAPI:
         return reject(approval_id, RejectBody(reason=reason))
 
     return app
-
-
-def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
-    import uvicorn
-    from harness.governance.hitl import HITLStateMachine
-    uvicorn.run(make_app(HITLStateMachine()), host=host, port=port)

@@ -50,7 +50,8 @@ def _run(args):
     else:
         from harness.llm.deepseek import DeepSeekClient
         key = CredentialStore.interactive_first_run()
-        llm = DeepSeekClient(api_key=key, model=cfg.llm.model, base_url=cfg.llm.base_url)
+        llm = DeepSeekClient(api_key=key, model=cfg.llm.model, base_url=cfg.llm.base_url,
+                             max_tokens=cfg.llm.max_tokens, temperature=cfg.llm.temperature)
         task = " ".join(args)
     reg = ToolRegistry(); register_builtins(reg, cfg)
     gov = Governance(ScopeFence(cfg.governance.allowed_paths),
