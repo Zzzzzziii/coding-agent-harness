@@ -49,7 +49,6 @@ class HarnessServer:
         self.hitl = HITLStateMachine()
         self._lock = threading.Lock()
         self.activity = []
-        self._dangerous = [r"git\s+push\s+--force"]
 
     def run_task(self, task, mock=False):
         if mock:
@@ -63,7 +62,8 @@ class HarnessServer:
                                  temperature=self.config.llm.temperature)
         reg = ToolRegistry(); register_builtins(reg, self.config, workspace=self.workspace)
         gov = Governance(ScopeFence(self.config.governance.allowed_paths),
-                         Guardrail(self._dangerous, self.config.governance.deny_patterns),
+                         Guardrail(self.config.governance.dangerous_patterns,
+                                   self.config.governance.deny_patterns),
                          self.hitl)
         cs = ContextStore(open(self.config.agent.system_prompt_file, encoding="utf-8").read())
         loop = AgentLoop(llm, self.config, gov, reg, cs, FeedbackInjector(cs), TestRunner(),

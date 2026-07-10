@@ -538,12 +538,15 @@ agent:
 governance:
   allowed_paths:
     - "/workspace/"
-  deny_patterns:                      # 毁灭性命令，硬阻断，不经 HITL
+  deny_patterns:                      # 毁灭性命令，硬阻断，不经 HITL（§9 验收: 5+ 危险模式）
     - 'rm\s+-rf\s+/'
     - ':\(\)\{\s*:\|:&\s*\};:'        # fork bomb
+    - 'dd\s+if=/dev/(zero|random)\s+of=/dev/'   # 覆盖磁盘
+    - 'mkfs(\.\w+)?\s+/dev/'          # 格式化磁盘
   dangerous_patterns:                 # 需人工审批，进 HITL
     - 'drop\s+(table|database)'
     - 'git\s+push\s+--force'
+    - 'git\s+reset\s+--hard'          # 丢历史，需审批
   hitl_timeout_seconds: 300
 
 tests:
