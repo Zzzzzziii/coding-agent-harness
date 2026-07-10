@@ -1928,11 +1928,12 @@ DEEPSEEK_API_KEY=
 
 ```dockerfile
 # Dockerfile
-FROM python:3.12-slim
+FROM python:3.11-slim
 WORKDIR /app
 COPY pyproject.toml ./
 COPY harness ./harness
-COPY config.yaml prompts ./ ./ 2>/dev/null || true
+COPY config.yaml ./
+COPY prompts ./prompts
 RUN pip install --no-cache-dir .
 EXPOSE 8000
 USER 65532
@@ -1950,7 +1951,7 @@ services:
     envVars:
       - key: DEEPSEEK_API_KEY
         sync: false   # set secret in Render dashboard; never plaintext
-    healthCheckPath: /approvals
+    healthCheckPath: /health
 ```
 
 - [ ] **Step 2: Verify** `docker build -t coding-harness .` succeeds locally.
@@ -1966,7 +1967,7 @@ services:
 
 ```yaml
 # .gitlab-ci.yml
-image: python:3.12-slim
+image: python:3.11-slim
 stages: [test]
 unit-test:
   stage: test
