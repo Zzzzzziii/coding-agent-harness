@@ -1,0 +1,21 @@
+llm:
+  model: deepseek-chat
+  base_url: "https://api.deepseek.com"
+  max_tokens: 4096
+  temperature: 0.0
+
+agent:
+  max_iters: 20
+  system_prompt_file: prompts/system.md
+
+governance:
+  allowed_paths:
+    - "/workspace/"
+  dangerous_patterns:
+    - "git push --force"
+  deny_patterns:
+    - "rm -rf /"
+  hitl_timeout_seconds: 300
+
+tests:
+  command: "pytest tests/ -v --tb=short"
