@@ -40,7 +40,7 @@
 | 4 | T15 loop ★ | sonnet | ✅ | 147f6d3 |
 | 5 | T16–T17 cli/web + deepseek/server | sonnet | ✅ | b0b6fda..8bb6751 (+fix e62e226) |
 | 6 | T18–T19 integration/demo ★ | sonnet | ✅ | 8ea66b4 + cd20804 |
-| 7 | T20–T22 packaging/docker/CI | haiku | 待 | — |
+| 7 | T20–T22 packaging/docker/CI | sonnet | ✅ | cb1e953..35a5b81 (+§9 fix 080af2d) |
 | 8 | T23 README | sonnet | 待 | — |
 
 ### Unit 1（T1–T5）两阶段评审记录
@@ -91,3 +91,12 @@
 - **spec 合规**：✅ A.6 三个行为全覆盖且确定性（MockLLMClient，无网络、无 LLM key），与 SPEC §A.6 + §12 一致；`-m demo` 独立可跑（3 pass）。重点维度（治理）的机制通过 demo 在 mock LLM 下被证明——满足 A.4-C「移除真实 LLM，机制仍可确定性单测」。
 - **代码质量**：✅ commit 边界干净（8ea66b4 只含 `tests/integration/*`、cd20804 只含 `tests/demo/*`，未碰 harness 源码、未误 `git add` 工作树其他改动）；断言有效（demo① `blocked+denied+executed==[]`、demo② `success+iters==5+actions[1/3].tool=="run_tests"`、demo③ `status=="rejected"+executed 不含 push --force 含 status`——非 assert-nothing）；brief 代码 verbatim（行数吻合 42/47/74）；demo marker 无 warning（`pyproject [tool.pytest.ini_options] markers` 已注册）。**一次过，无需 fix**。
 - **教训**：dispatch 前对三个关键点（`ScriptedTool.__call__` 接口、pipeline `rejected→blocked=True` 语义、demo marker 已注册）的 pre-flight 核验，使 transcription 任务一次过——pre-flight 把「subagent 会撞的墙」提前拆掉，省一轮返工。与 Unit 4（pre-flight 修 4 bug 致一次过）同构：**集成/测试任务的 dispatch 前核验，价值最高**。
+
+### Unit 7（T20–T22，packaging/Docker/CI）两阶段评审记录
+
+- **subagent**：sonnet（override summary 计划的 haiku——部署 + CI 硬约束链路值得判断力，非最便宜 tier），fresh session，task-20/21/22 brief（均含 pre-flight 修复后的完整配置，verbatim transcription）。3 commits：cb1e953（Makefile/.env.example）、811bdda（Dockerfile/.dockerignore/render.yaml）、35a5b81（.gitlab-ci.yml/ci.yml）。7 文件。
+- **spec 合规**：✅ §9 验收「分发 docker build+run 单条命令」「CI .gitlab-ci.yml 含 unit-test job 最后状态 pass」+ §7.2 Docker（不 COPY .env、USER 65532 非 root）+ §4.2 凭据威胁模型（key 不进镜像/git/.dockerignore/render sync:false 不 plaintext）全部满足；`.gitlab-ci.yml` job 名 `unit-test`（通用要求硬约束）；Dockerfile COPY 修复后语法正确（pre-flight 已修 `2>/dev/null || true` 无效语法）。
+- **代码质量**：✅ commit 边界干净（7 文件，未碰 harness/tests/pyproject）；brief verbatim（pre-flight 修复全部生效：Dockerfile COPY、Python 3.11 统一、render /health、Makefile 无 phantom `run`、.dockerignore 含 .env）。**一次过无需 fix**。
+- **§9 gap 修复（reviewer，commit 080af2d）**：§9 验收第 2 项「`rm -rf /` 等 **5+** 危险模式全部被拦截」——config.yaml 原仅 2 patterns。reviewer 补 config.yaml 到 7 patterns（deny 4：`rm -rf /`、fork bomb、`dd of=/dev/`、`mkfs /dev/`；dangerous 3：`drop table/database`、`git push --force`、`git reset --hard`）+ `test_guardrail` 加 `dd`/`mkfs`/`git reset --hard` 断言（现 7 patterns 确定性测试）+ 同步 SPEC §11.5 + `server.py` 改从 config 读 dangerous（原硬编码 `[git push --force]`，与 CLI 不一致；现 CLI/server 共享 config 单一真相源，mock demo 仍 HITL `git push --force`）。63/63 pass。
+- **concerns（已知局限）**：① docker build 未验证（Windows 本地 daemon 未跑，Dockerfile 仅静态验证语法——部署就绪时用户需在有 docker 的环境跑一次 `docker build`）；② Starlette httpx deprecation warning（pre-existing，非 Unit 7 引入）。
+- **教训**：pre-flight 扫了 brief 代码 bug（Dockerfile COPY、Python 版本、render healthCheck、Makefile phantom、.dockerignore）使配置文件 task 一次过；但 §9「5+ 危险模式」这类**验收标准的量化条款**，pre-flight 没核对——reviewer 读 §9 时才发现 config patterns 数量不足。教训：**pre-flight 除了扫 brief bug，还要对照 SPEC §9 验收标准的每一条量化要求**（「5+」「100%」「每次确定性」），否则会漏 gap。
