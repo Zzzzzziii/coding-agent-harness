@@ -1406,8 +1406,8 @@ def build_loop(mock, tmp_path, approver=None):
     reg = ToolRegistry(); register_builtins(reg, None, workspace=str(tmp_path))
     gov = Governance(ScopeFence([str(tmp_path)+"/"]), Guardrail([], [r"rm\s+-rf\s+/"]), HITLStateMachine())
     class C: max_iters=10
-    return AgentLoop(mock, C(), gov, reg, ContextStore("sys"),
-                    FeedbackInjector(ContextStore("sys")), TestRunner(), approver=approver)
+    cs = ContextStore("sys")  # ONE store shared by loop + injector so feedback reaches the LLM
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
 
 def test_loop_stops_on_done(tmp_path):
     mock = MockLLMClient([LLMResponse("done", [], "stop")])
@@ -1430,7 +1430,7 @@ def test_loop_executes_then_done(tmp_path):
 
 ```python
 # harness/loop.py
-from harness.models import Action, AgentRunResult
+from harness.models import Action, AgentRunResult, Message
 from harness.llm.base import next_action
 
 class AgentLoop:
@@ -1448,12 +1448,13 @@ class AgentLoop:
     def run(self, task: str) -> AgentRunResult:
         actions: list[Action] = []
         executed: list[str] = []
-        self.context_store.add_message = None  # noop placeholder
-        from harness.models import Message
         self.context_store.add(Message("user", task))
         max_iters = getattr(self.config, "max_iters", 20)
         for i in range(1, max_iters + 1):
-            resp = self._chat_with_retry()
+            try:
+                resp = self._chat_with_retry()
+            except StopIteration:  # mock script exhausted → end gracefully, don't crash
+                return AgentRunResult("error", i, actions, executed)
             if resp is None:
                 return AgentRunResult("error", i, actions, executed)
             action = next_action(resp)
@@ -1472,7 +1473,7 @@ class AgentLoop:
             if action.tool == "run_tests":
                 tf = self.test_runner.parse(result)
                 self.feedback_injector.inject_test(action, tf, tool_call_id)
-                executed.append((action.args.get("test_cmd") or "pytest"))
+                executed.append(action.args.get("test_cmd") or "pytest")
             else:
                 self.feedback_injector.inject_result(action, result, tool_call_id)
                 if action.tool in ("run_shell",):
@@ -1573,8 +1574,8 @@ def _run(args):
     gov = Governance(ScopeFence(cfg.governance.allowed_paths),
                      Guardrail(cfg.governance.dangerous_patterns, cfg.governance.deny_patterns),
                      HITLStateMachine())
-    loop = AgentLoop(llm, cfg, gov, reg, ContextStore(sys_prompt),
-                     FeedbackInjector(ContextStore(sys_prompt)), TestRunner())
+    cs = ContextStore(sys_prompt)  # shared store — feedback reaches the LLM context
+    loop = AgentLoop(llm, cfg, gov, reg, cs, FeedbackInjector(cs), TestRunner())
     result = loop.run(task)
     print(f"status={result.final_status} iters={result.iterations} "
           f"actions={len(result.actions)} executed={len(result.executed_commands)}")
@@ -1713,13 +1714,14 @@ from tests.conftest import ScriptedTool
 
 def build(mock, tmp_path, approver=None, test_results=None):
     reg = ToolRegistry()
+    register_builtins(reg, None, workspace=str(tmp_path))   # read/write/shell/tests first
     if test_results is not None:
-        reg.register("run_tests", {}, ScriptedTool(test_results))
+        reg.register("run_tests", {}, ScriptedTool(test_results))  # OVERRIDE tests w/ canned output
     gov = Governance(ScopeFence([str(tmp_path)+"/"]),
                      Guardrail([r"git\s+push\s+--force"], [r"rm\s+-rf\s+/"]), HITLStateMachine())
     class C: max_iters=20
-    cs = ContextStore("sys"); fi = FeedbackInjector(ContextStore("sys"))
-    return AgentLoop(mock, C(), gov, reg, cs, fi, TestRunner(), approver=approver)
+    cs = ContextStore("sys")
+    return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), approver=approver)
 
 def test_read_modify_test_pass_loop(tmp_path):
     # LLM: read file -> run_tests (fails) -> write fix -> run_tests (passes) -> done
@@ -1730,14 +1732,11 @@ def test_read_modify_test_pass_loop(tmp_path):
         LLMResponse(None, [ToolCall("c3", "run_tests", {})], "tool_calls"),
         LLMResponse("done", [], "stop"),
     ])
-    reg_loop = build(mock, tmp_path, test_results=[
+    loop = build(mock, tmp_path, test_results=[
         ToolResult(False, {"stdout": "==== 1 failed in 0.1s ====", "exit_code": 1, "command": "pytest"}, None),
         ToolResult(True,  {"stdout": "==== 1 passed in 0.1s ====", "exit_code": 0, "command": "pytest"}, None),
     ])
-    # need read_file/write_file real handlers too:
-    from harness.tools.builtin import register_builtins
-    register_builtins(reg_loop.tools, None, workspace=str(tmp_path))  # adds run_tests override? avoid: register after
-    r = reg_loop.run("fix the test")
+    r = loop.run("fix the test")
     assert r.final_status == "success" and r.iterations == 5
 ```
 
