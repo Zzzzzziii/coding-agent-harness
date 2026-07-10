@@ -37,7 +37,7 @@
 | 1 | T1–T5 core | sonnet | ✅ | c41af42..276e944 (+review fix) |
 | 2 | T6–T9 governance ★ | sonnet | ✅ | d420512..e79896f |
 | 3 | T10–T14 tools/feedback/memory | sonnet | ✅ | 08075e0..ac61cac (+review fix) |
-| 4 | T15 loop ★ | sonnet | 待 | — |
+| 4 | T15 loop ★ | sonnet | ✅ | 147f6d3 |
 | 5 | T16–T17 cli/web | sonnet | 待 | — |
 | 6 | T18–T19 integration/demo ★ | sonnet | 待 | — |
 | 7 | T20–T22 packaging/docker/CI | haiku | 待 | — |

@@ -1540,7 +1540,7 @@ def main(argv=None) -> int:
             cs.clear(); print("cleared."); return 0
         print(f"unknown creds subcommand: {sub}"); return 2
     if cmd == "serve":
-        from harness.web.app import serve; serve(); return 0
+        from harness.server import serve; serve(); return 0
     if cmd == "run":
         return _run(argv[1:])
     print(f"unknown command: {cmd}"); return 2
@@ -1998,7 +1998,7 @@ jobs:
 | T8 hitl | ✅ | 17ba4aa | Unit 2 ★（pending→approved|rejected 单向，float ts，created_at） |
 | T9 gov pipeline | ✅ | e79896f | Unit 2 ★（scope→guardrail→hitl，可注入 Approver；demo①③ 依赖其 wiring） |
 | T10–T14 tools/feedback/memory | ✅ | 08075e0..ac61cac (+fix) | Unit 3；review 修 `TestFeedback.success = failed==0 and passed>0`（unparseable 不再误报 PASSED） |
-| T15 loop | ⏳ | — | Unit 4 ★ |
+| T15 loop | ✅ | 147f6d3 | Unit 4 ★（invariants 验证：blocked 入 actions、executed 仅非阻断、StopIteration→error、max_iters） |
 | T16–T17 cli/web | ⏳ | — | Unit 5 |
 | T18–T19 integration/demo | ⏳ | — | Unit 6 ★ |
 | T20–T22 packaging/docker/CI | ⏳ | — | Unit 7 |
