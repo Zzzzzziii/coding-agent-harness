@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: coding-agent-harness
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false   # set secret in Render dashboard; never plaintext
+    healthCheckPath: /health

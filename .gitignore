@@ -42,3 +42,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Course material / archive cruft (not deliverables)
+agentos-vibecoding/
+__MACOSX/
+_coldstart_scratch/

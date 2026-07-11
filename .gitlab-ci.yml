@@ -1,0 +1,9 @@
+image: python:3.11-slim
+stages: [test]
+unit-test:
+  stage: test
+  script:
+    - pip install --no-cache-dir ".[test]"
+    - pytest -q
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
