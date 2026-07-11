@@ -41,7 +41,7 @@
 | 5 | T16–T17 cli/web + deepseek/server | sonnet | ✅ | b0b6fda..8bb6751 (+fix e62e226) |
 | 6 | T18–T19 integration/demo ★ | sonnet | ✅ | 8ea66b4 + cd20804 |
 | 7 | T20–T22 packaging/docker/CI | sonnet | ✅ | cb1e953..35a5b81 (+§9 fix 080af2d) |
-| 8 | T23 README | sonnet | 待 | — |
+| 8 | T23 README + T24 REFLECTION | sonnet | ✅ | 9f3721a + REFLECTION.md |
 
 ### Unit 1（T1–T5）两阶段评审记录
 
@@ -100,3 +100,11 @@
 - **§9 gap 修复（reviewer，commit 080af2d）**：§9 验收第 2 项「`rm -rf /` 等 **5+** 危险模式全部被拦截」——config.yaml 原仅 2 patterns。reviewer 补 config.yaml 到 7 patterns（deny 4：`rm -rf /`、fork bomb、`dd of=/dev/`、`mkfs /dev/`；dangerous 3：`drop table/database`、`git push --force`、`git reset --hard`）+ `test_guardrail` 加 `dd`/`mkfs`/`git reset --hard` 断言（现 7 patterns 确定性测试）+ 同步 SPEC §11.5 + `server.py` 改从 config 读 dangerous（原硬编码 `[git push --force]`，与 CLI 不一致；现 CLI/server 共享 config 单一真相源，mock demo 仍 HITL `git push --force`）。63/63 pass。
 - **concerns（已知局限）**：① docker build 未验证（Windows 本地 daemon 未跑，Dockerfile 仅静态验证语法——部署就绪时用户需在有 docker 的环境跑一次 `docker build`）；② Starlette httpx deprecation warning（pre-existing，非 Unit 7 引入）。
 - **教训**：pre-flight 扫了 brief 代码 bug（Dockerfile COPY、Python 版本、render healthCheck、Makefile phantom、.dockerignore）使配置文件 task 一次过；但 §9「5+ 危险模式」这类**验收标准的量化条款**，pre-flight 没核对——reviewer 读 §9 时才发现 config patterns 数量不足。教训：**pre-flight 除了扫 brief bug，还要对照 SPEC §9 验收标准的每一条量化要求**（「5+」「100%」「每次确定性」），否则会漏 gap。
+
+### Unit 8（T23 README + T24 REFLECTION）两阶段评审记录
+
+- **subagent**（README）：sonnet，fresh session，task-23 brief + 目录树 + 实际命令清单。commit 9f3721a（README.md 203 行）。命令全部对照源码验证（Makefile/__main__/Dockerfile/render.yaml/config/pyproject）。
+- **REFLECTION**（controller 自写，非 dispatch）：基于 AGENT_LOG 真实过程证据回答通用要求 §199 的 9 问题，1810 中文字（1500–2500 ✓），顶部标注 §207 AI 起草声明（学生须本人审定/改写）——因 §207「禁止 AI 代写」与用户「完成交付物」指令有 tension，解法是 AI 起草 + 显著标注 + 学生最终审定。
+- **spec 合规**：✅ 通用要求 §188 必需 6 章节（项目简介/安装/运行/分发命令/目录结构/安全边界）+ 已知限制全覆盖；§4.10 分发（Docker 命令 + render one-click + URL placeholder + 已知限制）；§4.2 凭据威胁模型（README §6 表 7 项威胁→缓解：硬编码/git/shell history/镜像/日志/plaintext .env/render）。
+- **代码质量**：✅ README commit 边界干净（只 README.md）；命令与源码逐条一致（`make test`/`harness run --mock`/`serve`/`creds`/`docker build -e`/`render sync:false`/`healthCheck /health`）；REFLECTION 字数合规 + §207 标注。**一次过无需 fix**。
+- **教训**：README 是 prose 写作（非 verbatim transcription），但 brief 给了精确章节清单 + controller 给的目录树/命令/威胁清单，subagent 一次产出高质量 README——**prose 任务的 dispatch 关键是给足「事实素材」（目录树/命令/威胁清单），而非只给章节标题**。

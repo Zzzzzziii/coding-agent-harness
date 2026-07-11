@@ -2067,4 +2067,4 @@ jobs:
 | T16–T17 cli/web | ✅ | b0b6fda..8bb6751 (+fix e62e226) | Unit 5；review 修：删 `app.py` 死 `serve()`、CLI `_run` 传 llm `max_tokens`/`temperature` |
 | T18–T19 integration/demo | ✅ | 8ea66b4 + cd20804 | Unit 6 ★（A.6 三 demo：①guardrail 硬阻断 `rm -rf /` ②feedback 自纠 ③HITL reject→retry；3 integration + 3 demo，确定性无网络，review 一次过） |
 | T20–T22 packaging/docker/CI | ✅ | cb1e953..35a5b81 (+§9 fix 080af2d) | Unit 7；reviewer 补 §9「5+ 危险模式」gap（config 7 patterns + test + SPEC §11.5 + server 从 config 读） |
-| T23 README | ⏳ | — | Unit 8 |
+| T23 README + T24 REFLECTION | ✅ | 9f3721a + REFLECTION.md | Unit 8；README 7 章节 + 凭据威胁模型 7 项；REFLECTION 1810 字（§207 AI 起草标注，学生须本人审定） |
