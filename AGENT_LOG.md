@@ -116,3 +116,8 @@
   - **§9 验收 10 项全 PASS**（AgentLoop / Guardrail 5+ / HITL / ScopeFence / Feedback / WebUI / CredentialStore / Config / Docker / CI `unit-test` job）；**§13 A.4 自实现边界全 PASS**（无 LangChain/AutoGen/CrewAI，机制是代码非提示词）；交付物清单全 Present（URL 待用户，非 finding）；**§4.2 凭据安全全 PASS**（无明文泄漏路径）；63 测试 mock-LLM 确定性无网络。
   - controller 另做凭据 git 历史核验：`.env` 从未提交、`.gitignore` 含 `.env`+`.env.*`+`!.env.example`、历史无真 key（`sk-`+20 字符为空）、所有 `DEEPSEEK_API_KEY` 引用是模板/变量名/假值/占位符。
   - **3 Minor fix（reviewer 直接修，§3.5）**：① `tests/unit/test_cli.py:12` 删未用 `tmp_path`/`monkeypatch` fixtures（test hygiene）；② `README.md:104` 改「替换 render.yaml placeholder」措辞（render.yaml 无该 placeholder，原指令误导部署）→ 改为「部署后记录 Render 公网 URL（交付物⑨）」；③ 6 个配置文件补尾换行（POSIX best practice）。全 suite 63 passed 复测。
+
+## 阶段 4：finishing-a-development-branch
+
+- **2026-07-11** `superpowers:finishing-a-development-branch`：tests 63 pass（merge 前后均验证）→ normal repo（无 worktree）→ base=`main` → 用户选「合并到 main 本地」→ `git merge --no-ff feat/harness`（merge commit `f6435ba`，含全部 41 commits 真实逐 task 历史）→ merged main 复测 63 pass → `git branch -d feat/harness`（删除已合并分支）→ 仅剩 `main`。
+- **部署就绪（配置层完成，执行是用户动作）**：`Dockerfile` + `render.yaml` + `.gitlab-ci.yml`（`unit-test` job）+ `.github/workflows/ci.yml` + README 部署章节全部就绪；最终评审 READY TO MERGE + 凭据 git 历史核验通过。用户待执行（交付物⑨ + §191 最后 CI pass）：① 在有 Docker 的环境跑 `docker build -t coding-harness .` 验证镜像（本地 daemon 未跑）；② 推 `main` 到 GitLab/GitHub 触发 CI（`unit-test` job + GitHub Actions mirror）；③ Render dashboard 按 `render.yaml` 部署 + 设 `DEEPSEEK_API_KEY` secret + 回填公网 URL；④ 确认最后一次 CI pass。
