@@ -108,3 +108,11 @@
 - **spec 合规**：✅ 通用要求 §188 必需 6 章节（项目简介/安装/运行/分发命令/目录结构/安全边界）+ 已知限制全覆盖；§4.10 分发（Docker 命令 + render one-click + URL placeholder + 已知限制）；§4.2 凭据威胁模型（README §6 表 7 项威胁→缓解：硬编码/git/shell history/镜像/日志/plaintext .env/render）。
 - **代码质量**：✅ README commit 边界干净（只 README.md）；命令与源码逐条一致（`make test`/`harness run --mock`/`serve`/`creds`/`docker build -e`/`render sync:false`/`healthCheck /health`）；REFLECTION 字数合规 + §207 标注。**一次过无需 fix**。
 - **教训**：README 是 prose 写作（非 verbatim transcription），但 brief 给了精确章节清单 + controller 给的目录树/命令/威胁清单，subagent 一次产出高质量 README——**prose 任务的 dispatch 关键是给足「事实素材」（目录树/命令/威胁清单），而非只给章节标题**。
+
+## 阶段 3：最终全分支评审 + 收尾
+
+- **2026-07-11** 最终全分支评审（`superpowers:requesting-code-review`，**opus** 最强可用模型）：review-package `59d9903..7560129`（40 commits, 312KB diff）。
+  - **verdict: READY TO MERGE**。0 Critical / 0 Important / 3 Minor。
+  - **§9 验收 10 项全 PASS**（AgentLoop / Guardrail 5+ / HITL / ScopeFence / Feedback / WebUI / CredentialStore / Config / Docker / CI `unit-test` job）；**§13 A.4 自实现边界全 PASS**（无 LangChain/AutoGen/CrewAI，机制是代码非提示词）；交付物清单全 Present（URL 待用户，非 finding）；**§4.2 凭据安全全 PASS**（无明文泄漏路径）；63 测试 mock-LLM 确定性无网络。
+  - controller 另做凭据 git 历史核验：`.env` 从未提交、`.gitignore` 含 `.env`+`.env.*`+`!.env.example`、历史无真 key（`sk-`+20 字符为空）、所有 `DEEPSEEK_API_KEY` 引用是模板/变量名/假值/占位符。
+  - **3 Minor fix（reviewer 直接修，§3.5）**：① `tests/unit/test_cli.py:12` 删未用 `tmp_path`/`monkeypatch` fixtures（test hygiene）；② `README.md:104` 改「替换 render.yaml placeholder」措辞（render.yaml 无该 placeholder，原指令误导部署）→ 改为「部署后记录 Render 公网 URL（交付物⑨）」；③ 6 个配置文件补尾换行（POSIX best practice）。全 suite 63 passed 复测。

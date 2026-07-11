@@ -100,7 +100,7 @@ The Docker image:
 1. Push the repo to GitHub/GitLab.
 2. In the Render dashboard, create a **New Web Service** → select your repo.
 3. Render auto-detects `render.yaml`. Set `DEEPSEEK_API_KEY` as a **secret environment variable** (Render dashboard → Environment → Secret File).
-4. **After deployment**, replace the placeholder `<TODO: your render web URL>` in `render.yaml` with your actual Render URL (e.g. `https://coding-agent-harness.onrender.com`).
+4. **After deployment**, note your Render public URL (e.g. `https://coding-agent-harness.onrender.com`) — this is deliverable ⑨ (线上部署 URL, 通用要求 §193). Record it in your submission.
 5. Health check endpoint: `/health`.
 
 ---

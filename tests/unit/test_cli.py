@@ -9,8 +9,8 @@ def test_creds_status_when_missing(tmp_path, monkeypatch, capsys):
     assert rc == 0 and "configured: false" in out.lower()
 
 
-def test_run_mock_returns_success(tmp_path, monkeypatch):
-    # config.yaml + prompts/system.md exist at repo root (Unit 2); run --mock uses MockLLMClient([done])
+def test_run_mock_returns_success():
+    # config.yaml + prompts/system.md exist at repo root; --mock uses MockLLMClient([done]) -> success.
     from harness.__main__ import main
     rc = main(["run", "--mock", "hi"])
     assert rc == 0
