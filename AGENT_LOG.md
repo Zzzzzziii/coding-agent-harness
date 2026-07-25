@@ -121,3 +121,11 @@
 
 - **2026-07-11** `superpowers:finishing-a-development-branch`：tests 63 pass（merge 前后均验证）→ normal repo（无 worktree）→ base=`main` → 用户选「合并到 main 本地」→ `git merge --no-ff feat/harness`（merge commit `f6435ba`，含全部 41 commits 真实逐 task 历史）→ merged main 复测 63 pass → `git branch -d feat/harness`（删除已合并分支）→ 仅剩 `main`。
 - **部署就绪（配置层完成，执行是用户动作）**：`Dockerfile` + `render.yaml` + `.gitlab-ci.yml`（`unit-test` job）+ `.github/workflows/ci.yml` + README 部署章节全部就绪；最终评审 READY TO MERGE + 凭据 git 历史核验通过。用户待执行（交付物⑨ + §191 最后 CI pass）：① 在有 Docker 的环境跑 `docker build -t coding-harness .` 验证镜像（本地 daemon 未跑）；② 推 `main` 到 GitLab/GitHub 触发 CI（`unit-test` job + GitHub Actions mirror）；③ Render dashboard 按 `render.yaml` 部署 + 设 `DEEPSEEK_API_KEY` secret + 回填公网 URL；④ 确认最后一次 CI pass。
+
+## 阶段 5：部署完成（2026-07-25）
+
+- **GitHub push**：`origin` 从 NJU GitLab 切到 GitHub（用户决定只用 GitHub；NJU GitLab 那边 CI 已触发跑完作 §191 双保险）。本地直连 github.com 超时（国内封锁）→ 配 SOCKS5 代理 `socks5h://127.0.0.1:10808`（V2RayN，仅本仓库 `--local`）→ push 成功（`431e769`，含 URL 回填）。
+- **Render 部署**：连 GitHub repo → 识别 `render.yaml` + `Dockerfile` → `docker build` 成功（`pip install` fastapi/uvicorn/openai 等）→ `python -m harness serve` 启动 → `Application startup complete` → health check pass。公网 URL = **`https://coding-agent-harness-89yf.onrender.com`**。
+- **部署验证**（controller 云端访问，绕过本地网络封锁）：`/health` → `{"status":"ok"}` ✓；`/approvals` → `{"pending":[]}` ✓（HITL WebUI 正常）。
+- **CI pass**（§191）：GitHub Actions `.github/workflows/ci.yml` 的 `unit-test` job 两个 run（`27ab036` + `431e769`）均 pass（用户确认 Actions 页面双绿）。
+- **全部交付物完成**（通用要求 §185–195）：① SPEC/PLAN/SPEC_PROCESS ✅ ② 源码 44 commits 无凭据 ✅ ③ Dockerfile+render.yaml ✅ ④ README（6 章节+威胁模型+Live URL）✅ ⑤ AGENT_LOG ✅ ⑥ `.gitlab-ci.yml` `unit-test` job ✅ ⑦ CI pass ✅ ⑧ REFLECTION（1810 字 §207 标注）✅ ⑨ 部署 URL ✅。
