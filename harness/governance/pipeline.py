@@ -33,11 +33,13 @@ class Governance:
                 if approver is None:
                     return GovernanceDecision(blocked=True, reason="awaiting HITL", layer="hitl", approval_id=rec.id)
                 if approver(rec):
-                    self.hitl.approve(rec.id)
+                    if rec.status == "pending":
+                        self.hitl.approve(rec.id)
                     action.status = "approved"
                     return GovernanceDecision(blocked=False, reason="approved", layer="hitl", approval_id=rec.id)
                 else:
-                    self.hitl.reject(rec.id, "rejected by human")
+                    if rec.status == "pending":
+                        self.hitl.reject(rec.id, "rejected by human")
                     action.status = "rejected"
                     return GovernanceDecision(blocked=True, reason="rejected by human", layer="hitl", approval_id=rec.id)
         return GovernanceDecision(blocked=False, reason="ok", layer=None)
