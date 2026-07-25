@@ -18,6 +18,19 @@ from harness.llm.mock import MockLLMClient
 from harness.web.app import make_app
 
 
+def wrap_approver(real_approver, on_event):
+    """Wrap an approver to emit hitl_pending (before) and hitl_resolved (after).
+    The real approver still owns the blocking wait + timeout; this only brackets it."""
+    def _wrapped(rec):
+        on_event({"type": "hitl_pending", "approval_id": rec.id,
+                  "tool": rec.action.tool, "args": rec.action.args})
+        approved = real_approver(rec)
+        on_event({"type": "hitl_resolved", "approval_id": rec.id,
+                  "status": "approved" if approved else "rejected"})
+        return approved
+    return _wrapped
+
+
 def blocking_approver(hitl, timeout_seconds):
     """Blocks until the WebUI decides on the shared HITL, or rejects after timeout (SPEC §10)."""
     def _approver(rec):
