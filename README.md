@@ -6,6 +6,8 @@ A self-implemented **Coding Agent Harness** — the agent (LLM) only decides the
 
 Built from scratch: no LangChain, AutoGen, CrewAI, or any third-party agent executor (SPEC Section 13).
 
+**Live deployment:** https://coding-agent-harness-89yf.onrender.com (Render, Docker; WebUI HITL approvals at `/approvals`, health at `/health`)
+
 ---
 
 ## 1. Project Overview
