@@ -121,8 +121,8 @@ def build_app(srv):
         with srv._lock:
             srv._run_counter += 1
             run_id = f"run_{srv._run_counter}"
-        q: _queue.Queue = _queue.Queue()
-        srv._runs[run_id] = q
+            q: _queue.Queue = _queue.Queue()
+            srv._runs[run_id] = q
 
         def _worker():
             try:

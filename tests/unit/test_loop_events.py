@@ -13,7 +13,7 @@ from harness.memory.context_store import ContextStore
 from harness.loop import AgentLoop
 
 
-def _loop(mock, tmp_path, on_event=None):
+def _loop(mock, tmp_path, on_event=None, max_iters=20):
     reg = ToolRegistry()
     reg.register("run_shell", {}, lambda args: ToolResult(
         ok=True, output={"stdout": args.get("command", "")}, error=None))
@@ -21,7 +21,8 @@ def _loop(mock, tmp_path, on_event=None):
     cs = ContextStore("sys")
 
     class C:
-        max_iters = 20
+        pass
+    C.max_iters = max_iters
 
     return AgentLoop(mock, C(), gov, reg, cs, FeedbackInjector(cs), TestRunner(), on_event=on_event)
 
@@ -45,3 +46,23 @@ def test_on_event_none_no_crash(tmp_path):
     mock = MockLLMClient([LLMResponse("done", [], "stop")])
     r = _loop(mock, tmp_path).run("hi")  # on_event defaults None
     assert r.final_status == "success"
+
+
+def test_on_event_emits_error_on_stopiteration(tmp_path):
+    """Empty script → StopIteration on first chat → emits error event."""
+    mock = MockLLMClient([])
+    events = []
+    _loop(mock, tmp_path, on_event=events.append).run("say hi")
+    assert events[0] == {"type": "step", "iter": 1}
+    assert events[-1] == {"type": "error", "final_status": "error", "iterations": 1}
+
+
+def test_on_event_emits_max_iters(tmp_path):
+    """Script that never stops → loop exhausts max_iters → emits max_iters event."""
+    mock = MockLLMClient([
+        LLMResponse(None, [ToolCall("c0", "run_shell", {"command": "x"})], "tool_calls"),
+        LLMResponse(None, [ToolCall("c1", "run_shell", {"command": "x"})], "tool_calls"),
+    ])
+    events = []
+    _loop(mock, tmp_path, on_event=events.append, max_iters=2).run("say hi")
+    assert events[-1] == {"type": "max_iters", "final_status": "max_iters", "iterations": 2}

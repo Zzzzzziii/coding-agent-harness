@@ -93,9 +93,19 @@ function handle(ev) {
         "<pre>" + esc(JSON.stringify(ev.output || {}) + (ev.error ? "\n" + ev.error : "")) + "</pre>");
       break;
     case "hitl_pending":
-      add("hitl", "⚠️ needs approval — <b>" + esc(ev.tool) + "</b><pre>" + esc(JSON.stringify(ev.args)) + "</pre>" +
-        '<div class="btns"><button class="approve" onclick="approve(\'' + ev.approval_id + '\', this)">approve</button>' +
-        '<button class="reject" onclick="reject(\'' + ev.approval_id + '\', this)">reject</button></div>');
+      var box = document.createElement("div");
+      box.className = "msg hitl";
+      box.innerHTML = "⚠️ needs approval — <b>" + esc(ev.tool) + "</b><pre>" + esc(JSON.stringify(ev.args)) + "</pre>";
+      var bDiv = document.createElement("div");
+      bDiv.className = "btns";
+      var aBtn = document.createElement("button"); aBtn.className="approve"; aBtn.textContent="approve";
+      var rBtn = document.createElement("button"); rBtn.className="reject"; rBtn.textContent="reject";
+      aBtn.addEventListener("click", function(){ approve(ev.approval_id, aBtn); });
+      rBtn.addEventListener("click", function(){ reject(ev.approval_id, rBtn); });
+      bDiv.appendChild(aBtn); bDiv.appendChild(rBtn);
+      box.appendChild(bDiv);
+      log.appendChild(box);
+      window.scrollTo(0, document.body.scrollHeight);
       break;
     case "hitl_resolved": add("hitl", ev.status === "approved" ? "✅ approved" : "❌ rejected"); break;
     case "success": add("term", "✅ done — success, " + ev.iterations + " iters"); finish(); break;
