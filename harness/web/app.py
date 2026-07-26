@@ -15,15 +15,6 @@ def make_app(hitl: HITLStateMachine) -> FastAPI:
     def list_pending():
         return {"pending": [{"id": r.id, "tool": r.action.tool, "args": r.action.args} for r in hitl.pending()]}
 
-    @app.get("/")
-    def root():
-        ps = hitl.pending()
-        rows = "".join(
-            f"<tr><td>{r.id}</td><td>{r.action.tool}</td><td>{r.action.args}</td>"
-            f'<td><a href="/approvals/{r.id}/approve">approve</a> '
-            f'<a href="/approvals/{r.id}/reject?reason=no">reject</a></td></tr>' for r in ps) or "<tr><td>none</td></tr>"
-        return f"<html><body><h1>Pending approvals</h1><table border=1>{rows}</table></body></html>"
-
     @app.post("/approvals/{approval_id}/approve")
     def approve(approval_id: str):
         if not hitl.get(approval_id) or hitl.get(approval_id).status != "pending":

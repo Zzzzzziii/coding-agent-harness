@@ -129,3 +129,21 @@
 - **部署验证**（controller 云端访问，绕过本地网络封锁）：`/health` → `{"status":"ok"}` ✓；`/approvals` → `{"pending":[]}` ✓（HITL WebUI 正常）。
 - **CI pass**（§191）：GitHub Actions `.github/workflows/ci.yml` 的 `unit-test` job 两个 run（`27ab036` + `431e769`）均 pass（用户确认 Actions 页面双绿）。
 - **全部交付物完成**（通用要求 §185–195）：① SPEC/PLAN/SPEC_PROCESS ✅ ② 源码 44 commits 无凭据 ✅ ③ Dockerfile+render.yaml ✅ ④ README（6 章节+威胁模型+Live URL）✅ ⑤ AGENT_LOG ✅ ⑥ `.gitlab-ci.yml` `unit-test` job ✅ ⑦ CI pass ✅ ⑧ REFLECTION（1810 字 §207 标注）✅ ⑨ 部署 URL ✅。
+
+## 阶段 6：聊天驱动前端（2026-07-25）
+
+- **brainstorming → spec → plan**：`superpowers:brainstorming`（单次任务+步骤流；公网只 mock；SSE+on_event；vanilla JS）→ spec `docs/superpowers/specs/2026-07-25-chat-frontend-design.md`（commit `0f5ac46`）→ 本 plan。
+- **实现**（5 个 TDD task，feat/chat-frontend 分支）：①`AgentLoop.on_event` 回调（5 个 emit 点，默认 None 不改既有行为）②`wrap_approver`（包裹 `blocking_approver`，emit hitl_pending/resolved，不动治理内核）③`POST /chat`+`GET /chat/{id}/stream`（`_runs` queue + SSE 同步生成器）④`index.html` 聊天 UI（vanilla，根 `/`，内联 approve/reject 复用现有端点）⑤README+AGENT_LOG。
+- **测试**：新增 `test_loop_events`(2) + `test_wrap_approver`(2) + `test_streaming`(5，approve/reject/404/health/root) = 9 新测试；全确定性 mock-LLM 无网络。既有 63 测试保持绿（`on_event=None` 默认）。
+- **commit 清单**：`git log --oneline feat/chat-frontend` 输出即为本阶段逐 task 提交（Tasks 1–4 + 本 Task 5 文档提交）：
+
+  ```
+  3d38ffc feat(web): chat-driven UI at root / (vanilla JS, SSE, inline HITL)
+  bf78f84 feat(server): POST /chat + GET /chat/{id}/stream SSE over on_event queue
+  d85427a feat(server): wrap_approver emits hitl_pending/hitl_resolved events
+  a82cc23 feat(loop): add on_event callback emitting step/action/governance/tool_result/done
+  9fb4d7d docs: chat-driven frontend implementation plan (5 TDD tasks)
+  0f5ac46 docs: chat-driven frontend design spec (brainstorming approved)
+  ```
+
+- **公网**：聊天 UI 只发 `mock=true`，不耗 DeepSeek 额度；真实 LLM 路径在端点存在但前端不暴露。
