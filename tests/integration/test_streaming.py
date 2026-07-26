@@ -73,3 +73,11 @@ def test_chat_unknown_run_404(tmp_path):
 def test_health_still_ok(tmp_path):
     c = TestClient(build_app(HarnessServer(_cfg(tmp_path), workspace=str(tmp_path))))
     assert c.get("/health").json() == {"status": "ok"}
+
+
+def test_root_serves_chat_ui(tmp_path):
+    c = TestClient(build_app(HarnessServer(_cfg(tmp_path), workspace=str(tmp_path))))
+    r = c.get("/")
+    assert r.status_code == 200
+    assert "chat" in r.text.lower()
+    assert "EventSource" in r.text or "/chat/" in r.text

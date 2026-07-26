@@ -5,7 +5,7 @@ import json
 import queue as _queue
 from pathlib import Path
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from harness.config import Config
 from harness.creds import CredentialStore
 from harness.governance.pipeline import Governance
@@ -101,6 +101,10 @@ class HarnessServer:
 def build_app(srv):
     """FastAPI app: HITL routes (make_app) + /health + /run + /activity + /chat streaming."""
     app = make_app(srv.hitl)
+
+    @app.get("/")
+    def root():
+        return FileResponse(Path(__file__).parent / "web" / "static" / "index.html")
 
     @app.get("/health")
     def health():
