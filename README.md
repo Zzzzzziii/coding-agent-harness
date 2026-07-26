@@ -62,13 +62,13 @@ harness run "Write a Python script that prints Fibonacci numbers"
 harness run --mock "Write a Python script that prints Fibonacci numbers"
 ```
 
-### Start the WebUI (HITL approval interface)
+### Start the WebUI (chat-driven agent + HITL approval)
 
 ```bash
 harness serve
 ```
 
-Opens FastAPI server on **http://localhost:8000**. Visit the root path to see pending HITL approval requests (approve/reject). A `POST /run?mock=true` endpoint replays a fixed deterministic demo; set `mock=false` (or omit) for real tasks with a configured API key.
+Opens FastAPI server on **http://localhost:8000**. The root path `/` is a **chat UI**: type a task, watch the agent's each step (LLM action → governance verdict → tool output → HITL pause → resolve) stream as chat bubbles in real time over SSE. The public demo runs mock-only (deterministic, no API key, no credit burn); inline Approve/Reject buttons call the existing HITL endpoints. `POST /run?mock=true` (fire-and-forget) and `GET /approvals` (JSON) remain available; `GET /health` for health checks.
 
 ### Manage credentials
 
@@ -193,6 +193,7 @@ export DEEPSEEK_API_KEY="sk-..."
 - **HITL WebUI**: Single-user; no authentication or session management. Suitable for local development and demonstration only.
 - **Demo vs. real mode**: `POST /run?mock=true` replays a fixed deterministic script (propose dangerous push → HITL → retry safe → done). Real tasks require `mock=false` and a configured DeepSeek API key.
 - **Test count**: 63 tests (unit + integration + demo), all using mock-LLM for deterministic, API-key-free execution.
+- **Chat WebUI**: Single-user, no auth (inherits the HITL limitation). Public deploy is mock-only (no real-LLM toggle exposed); real agent tasks use `harness run`. If a client disconnects mid-stream, the run's event queue is leaked until process restart (accepted for single-user demo scale). No chat history persistence.
 
 ---
 
